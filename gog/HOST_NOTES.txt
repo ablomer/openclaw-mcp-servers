@@ -1,0 +1,45 @@
+OpenClaw host merge (do this on the production machine, never commit live config)
+
+1. OpenClaw must not have gog. Do not mount bin/gog or gog-data into the
+   openclaw service, and do not set GOG_KEYRING_* on it. Mail and calendar
+   go through MCP HTTP only (gog-internal).
+
+   email-mcp and calendar-mcp copy /usr/local/bin/gog from
+   ghcr.io/openclaw/gogcli at image build time. They share
+   ${DATA_DIR}/openclaw/gog-data mounted at /data (GOG_DATA_DIR).
+   Tokens live in gog-data/keyring. Do not set GOG_HOME — that nests
+   another data/ directory and ignores gog-data/keyring.
+   Set GOG_KEYRING_PASSWORD in the host .env (compose interpolates it).
+   Changing it will not unlock an existing keyring.
+   Confirm auth from an MCP container or a one-shot image — never from
+   OpenClaw:
+     docker compose exec email-mcp gog auth list --check
+     docker run --rm \
+       -e GOG_DATA_DIR=/data \
+       -e GOG_KEYRING_BACKEND=file \
+       -e GOG_KEYRING_PASSWORD \
+       -v ${DATA_DIR}/openclaw/gog-data:/data \
+       ghcr.io/openclaw/gogcli:latest \
+       auth list --check
+
+2. Merge gog/openclaw.gog.snippet.json into
+   ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
+   - mcp.servers.email-readonly -> http://email-mcp:3000/mcp
+   - mcp.servers.calendar -> http://calendar-mcp:3000/mcp
+   - optional agents.entries.email / agents.entries.calendar
+     (local koboldcpp only; web/exec locked down)
+
+3. Attach the openclaw service to the gog-internal Docker network
+   (already patched in the repo-root docker-compose.yml). Recreate the
+   openclaw container after:
+     docker network create --internal gog-internal
+     docker network create gog-egress
+
+   OpenClaw must join gog-internal only — never gog-egress.
+
+4. Cloud models (Gemini/OpenRouter) will exfiltrate any MCP tool result.
+   Query personal mail and calendar through a local-only agent when possible.
+
+5. email-readonly is Gmail search/read only (gog --readonly --gmail-no-send).
+   calendar can create/update/delete events on existing calendars only.
+   Neither server can send mail or create/delete calendars.

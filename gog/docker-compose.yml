@@ -1,0 +1,76 @@
+# Gmail + Calendar MCP. Each image copies gog from ghcr.io/openclaw/gogcli
+# (static binary). They share only the gog-data volume — no host binary.
+# Included from the repo-root OpenClaw compose.
+# No published ports. No Traefik labels.
+# Networks are created by deploy.sh:
+#   docker network create --internal gog-internal
+#   docker network create gog-egress
+#
+# OpenClaw (root docker-compose.yml) attaches to gog-internal only.
+# Host layout matches the other MCP volumes:
+#   ${DATA_DIR}/openclaw/gog-data/keyring  (tokens)
+#   ${DATA_DIR}/openclaw/gog-data/credentials.json
+# Mounted at /data with GOG_DATA_DIR=/data. Do not set GOG_HOME.
+# OpenClaw must NEVER mount the gog binary, gog-data, or
+# GOG_KEYRING_* — mail/calendar go through MCP HTTP only.
+
+x-gog-security: &gog-security
+  restart: unless-stopped
+  read_only: true
+  user: "1000:1000"
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:size=32m,mode=1777
+  volumes:
+    - ${DATA_DIR}/openclaw/gog-data:/data
+  environment:
+    PORT: "3000"
+    HOST: 0.0.0.0
+    TZ: America/New_York
+    HOME: /home/node
+    XDG_CACHE_HOME: /tmp
+    XDG_CONFIG_HOME: /tmp
+    GOG_BIN: /usr/local/bin/gog
+    GOG_DATA_DIR: /data
+    GOG_CONFIG_DIR: /tmp/gog-config
+    GOG_STATE_DIR: /tmp/gog-state
+    GOG_CACHE_DIR: /tmp/gog-cache
+    GOG_KEYRING_BACKEND: file
+    GOG_KEYRING_PASSWORD: ${GOG_KEYRING_PASSWORD}
+    GOG_ACCOUNT: ${GOG_ACCOUNT:-}
+    GOG_GMAIL_NO_SEND: "1"
+  networks:
+    - gog-internal
+    - gog-egress
+  pids_limit: 256
+  mem_limit: 256m
+  cpus: "0.50"
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  email-mcp:
+    <<: *gog-security
+    build:
+      context: .
+      dockerfile: email-mcp/Dockerfile
+
+  calendar-mcp:
+    <<: *gog-security
+    build:
+      context: .
+      dockerfile: calendar-mcp/Dockerfile
+
+networks:
+  gog-internal:
+    external: true
+    name: gog-internal
+  gog-egress:
+    external: true
+    name: gog-egress

@@ -1,0 +1,40 @@
+{
+  "agents": {
+    "entries": {
+      "mood-journal": {
+        "model": "koboldcpp/gemma-4-31b-abliterated-q4",
+        "sandbox": {
+          "mode": "all"
+        },
+        "thinkingDefault": "medium",
+        "modelPolicy": {
+          "allow": [
+            "koboldcpp/gemma-4-31b-abliterated-q4"
+          ]
+        },
+        "tools": {
+          "profile": "minimal",
+          "exec": {
+            "ask": "always"
+          },
+          "web": {
+            "fetch": {
+              "enabled": false
+            },
+            "search": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "mood-journal": {
+        "transport": "streamable-http",
+        "url": "http://mood-journal-mcp:3000/mcp"
+      }
+    }
+  }
+}

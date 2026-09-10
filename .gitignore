@@ -1,0 +1,28 @@
+node_modules/
+**/node_modules/
+npm-debug.log*
+.env
+.env.*
+!.env.example
+
+# SQLite live data and WAL sidecars
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+db_data/
+backups/
+messages-data/
+mood-journal-data/
+
+# Worker session material (QR auth, cookies, Chromium profiles)
+sessions/
+**/sessions/
+
+# Host production config copy — may contain live credentials
+openclaw.json
+
+# OS / editor
+.DS_Store
+*.swp
+Thumbs.db

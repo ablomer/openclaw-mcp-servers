@@ -1,0 +1,29 @@
+Google Messages pairing / re-pair (headless Debian)
+
+The phone must stay online. Pairing is a phone-relay session, not a cloud API.
+QR pairing is gone; use Google-account cookies.
+
+First pair
+  docker compose logs -f gmessages-worker
+  Wait for event=needs_pair (hint: drop cookies.json or cookies.curl).
+  On a trusted machine, Firefox private window:
+    https://accounts.google.com/AccountChooser?continue=https://messages.google.com/web/config
+  Disable Device Bound Session Credentials if using Chrome.
+  Do not navigate past /web/config.
+  Copy the /web/config request as curl (bash), or export cookies as JSON:
+    SID, HSID, SSID, OSID, APISID, SAPISID
+    and __Secure-1PSIDTS if present
+  Write that payload to:
+    ${DATA_DIR}/openclaw/messages-data/sessions/gmessages/cookies.json
+    or cookies.curl
+  Worker logs event=needs_pair with emoji. Confirm that emoji on the phone.
+  Session is stored as session.json (mode 0600). Cookie files are deleted after a successful pair.
+
+Idle expiry / logout
+  Symptom: event=needs_pair again.
+  Drop a fresh cookies file and confirm the new emoji on the phone.
+
+Do not
+  Do not mount /sessions into the MCP container
+  Do not expose a debug port
+  The worker never sends SMS/RCS

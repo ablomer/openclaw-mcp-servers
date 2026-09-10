@@ -1,0 +1,75 @@
+# Mood journal MCP. Included from the repo-root OpenClaw compose.
+# No published ports. No Traefik labels.
+# Network is created by deploy.sh:
+#   docker network create --internal mood-journal-internal
+#
+# OpenClaw (root docker-compose.yml) attaches to mood-journal-internal and
+# must NEVER mount the journal db.
+
+services:
+  mood-journal-mcp:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - ${DATA_DIR}/openclaw/mood-journal-data/db:/data
+    environment:
+      MOOD_JOURNAL_DB_PATH: /data/mood-journal.sqlite
+      PORT: "3000"
+      HOST: 0.0.0.0
+      TZ: America/New_York
+    networks:
+      - mood-journal-internal
+    pids_limit: 256
+    mem_limit: 256m
+    cpus: "0.50"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mood-journal-backup:
+    build:
+      context: .
+      dockerfile: scripts/backup.Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    network_mode: none
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - ${DATA_DIR}/openclaw/mood-journal-data/db:/data
+      - ${DATA_DIR}/openclaw/mood-journal-data/backups:/backups
+    environment:
+      MOOD_JOURNAL_DB_PATH: /data/mood-journal.sqlite
+      BACKUP_DIR: /backups
+      BACKUP_KEEP: "14"
+      TZ: America/New_York
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+networks:
+  mood-journal-internal:
+    external: true
+    name: mood-journal-internal

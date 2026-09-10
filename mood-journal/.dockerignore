@@ -1,0 +1,14 @@
+node_modules
+.git
+.gitignore
+.env
+.env.*
+openclaw.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+data
+db_data
+backups
+agent-transcripts
+.cursor

@@ -1,0 +1,136 @@
+# Messages ingest + read-only MCP. Included from the repo-root OpenClaw compose.
+# No published ports. No Traefik labels.
+# Networks are created by deploy.sh:
+#   docker network create --internal messages-internal
+#   docker network create messages-egress
+#
+# OpenClaw (root docker-compose.yml) attaches to messages-internal and
+# must NEVER mount db or sessions.
+
+x-worker-security: &worker-security
+  restart: unless-stopped
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  environment:
+    MESSAGES_DB_PATH: /data/messages.sqlite
+    SESSIONS_DIR: /sessions
+  networks:
+    - messages-egress
+
+services:
+  messages-mcp:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - ${DATA_DIR}/openclaw/messages-data/db:/data:ro
+    environment:
+      MESSAGES_DB_PATH: /data/messages.sqlite
+      PORT: "3000"
+      HOST: 0.0.0.0
+    networks:
+      - messages-internal
+    pids_limit: 256
+    mem_limit: 256m
+    cpus: "0.50"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  whatsapp-worker:
+    <<: *worker-security
+    build:
+      context: .
+      dockerfile: workers/whatsapp/Dockerfile
+    user: "1000:65532"
+    volumes:
+      - ${DATA_DIR}/openclaw/messages-data/db:/data
+      - ${DATA_DIR}/openclaw/messages-data/sessions/whatsapp:/sessions/whatsapp
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: "1.0"
+
+  gmessages-worker:
+    <<: *worker-security
+    build:
+      context: .
+      dockerfile: workers/gmessages/Dockerfile
+    user: "1000:65532"
+    volumes:
+      - ${DATA_DIR}/openclaw/messages-data/db:/data
+      - ${DATA_DIR}/openclaw/messages-data/sessions/gmessages:/sessions/gmessages
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: "1.0"
+
+  instagram-worker:
+    <<: *worker-security
+    build:
+      context: .
+      dockerfile: workers/instagram/Dockerfile
+    user: "1000:65532"
+    volumes:
+      - ${DATA_DIR}/openclaw/messages-data/db:/data
+      - ${DATA_DIR}/openclaw/messages-data/sessions/instagram:/sessions/instagram
+    pids_limit: 256
+    mem_limit: 256m
+    cpus: "0.50"
+
+  messages-backup:
+    build:
+      context: .
+      dockerfile: scripts/backup.Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "1000:65532"
+    network_mode: none
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - ${DATA_DIR}/openclaw/messages-data/db:/data
+      - ${DATA_DIR}/openclaw/messages-data/backups:/backups
+    environment:
+      MESSAGES_DB_PATH: /data/messages.sqlite
+      BACKUP_DIR: /backups
+      BACKUP_KEEP: "14"
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+networks:
+  messages-internal:
+    external: true
+    name: messages-internal
+  messages-egress:
+    external: true
+    name: messages-egress

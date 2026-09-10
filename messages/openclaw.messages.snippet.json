@@ -1,0 +1,47 @@
+{
+  "agents": {
+    "entries": {
+      "messages": {
+        "model": "koboldcpp/gemma-4-31b-abliterated-q4",
+        "sandbox": {
+          "mode": "all"
+        },
+        "thinkingDefault": "medium",
+        "modelPolicy": {
+          "allow": [
+            "koboldcpp/gemma-4-31b-abliterated-q4"
+          ]
+        },
+        "tools": {
+          "profile": "minimal",
+          "exec": {
+            "ask": "always"
+          },
+          "web": {
+            "fetch": {
+              "enabled": false
+            },
+            "search": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "whatsapp": {
+        "enabled": false
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "messages-readonly": {
+        "transport": "streamable-http",
+        "url": "http://messages-mcp:3000/mcp"
+      }
+    }
+  }
+}

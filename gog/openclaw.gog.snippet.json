@@ -1,0 +1,70 @@
+{
+  "agents": {
+    "entries": {
+      "email": {
+        "model": "koboldcpp/gemma-4-31b-abliterated-q4",
+        "sandbox": {
+          "mode": "all"
+        },
+        "thinkingDefault": "medium",
+        "modelPolicy": {
+          "allow": [
+            "koboldcpp/gemma-4-31b-abliterated-q4"
+          ]
+        },
+        "tools": {
+          "profile": "minimal",
+          "exec": {
+            "ask": "always"
+          },
+          "web": {
+            "fetch": {
+              "enabled": false
+            },
+            "search": {
+              "enabled": false
+            }
+          }
+        }
+      },
+      "calendar": {
+        "model": "koboldcpp/gemma-4-31b-abliterated-q4",
+        "sandbox": {
+          "mode": "all"
+        },
+        "thinkingDefault": "medium",
+        "modelPolicy": {
+          "allow": [
+            "koboldcpp/gemma-4-31b-abliterated-q4"
+          ]
+        },
+        "tools": {
+          "profile": "minimal",
+          "exec": {
+            "ask": "always"
+          },
+          "web": {
+            "fetch": {
+              "enabled": false
+            },
+            "search": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "email-readonly": {
+        "transport": "streamable-http",
+        "url": "http://email-mcp:3000/mcp"
+      },
+      "calendar": {
+        "transport": "streamable-http",
+        "url": "http://calendar-mcp:3000/mcp"
+      }
+    }
+  }
+}

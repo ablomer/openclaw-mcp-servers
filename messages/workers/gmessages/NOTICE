@@ -1,0 +1,13 @@
+gmessages-worker
+Copyright (C) 2026 OpenClaw contributors
+
+This program includes libgm from mautrix-gmessages:
+
+  go.mau.fi/mautrix-gmessages/pkg/libgm
+  https://github.com/mautrix/gmessages
+  Copyright (C) Tulir Asokan and mautrix contributors
+  Licensed under the GNU Affero General Public License v3.0
+
+This worker is therefore licensed under AGPL-3.0-or-later.
+The remainder of the OpenClaw messages stack (WhatsApp worker, Instagram
+worker, MCP server) does not import libgm and is not part of this program.

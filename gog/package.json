@@ -1,0 +1,17 @@
+{
+  "name": "openclaw-gog",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "email-mcp",
+    "calendar-mcp"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "check": "node --check packages/shared/src/index.js && node --check packages/shared/src/gog.js && node --check packages/shared/src/log.js && node --check email-mcp/src/index.js && node --check email-mcp/src/server.js && node --check email-mcp/src/tools.js && node --check email-mcp/src/validate.js && node --check calendar-mcp/src/index.js && node --check calendar-mcp/src/server.js && node --check calendar-mcp/src/tools.js && node --check calendar-mcp/src/validate.js"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

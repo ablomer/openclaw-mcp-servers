@@ -1,0 +1,16 @@
+{
+  "name": "openclaw-mood-journal",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "mcp-server"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "check": "node --check mcp-server/src/index.js && node --check packages/shared/src/writer.js && node --check packages/shared/src/time.js && node --check packages/shared/src/daylio.js && node --check scripts/backup.mjs && node --check scripts/seed-fixture.mjs && node --check scripts/import-daylio.mjs"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

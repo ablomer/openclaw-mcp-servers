@@ -1,0 +1,50 @@
+# Root OpenClaw stack. Project compose fragments are included so they share
+# networks with this file. Add another project with:
+#   include:
+#     - path: ./other-project/docker-compose.yml
+include:
+  - path: ./messages/docker-compose.yml
+  - path: ./mood-journal/docker-compose.yml
+  - path: ./gog/docker-compose.yml
+
+services:
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:latest
+    restart: unless-stopped
+    volumes:
+      - ${DATA_DIR}/openclaw/data:/home/node/.openclaw
+      - ${DATA_DIR}/openclaw/vault:/vault:ro
+      - ${DATA_DIR}/openclaw/scripts:/scripts:ro
+      - ${DATA_DIR}/openclaw/edits:/edits
+    environment:
+      - TZ=America/New_York
+    networks:
+      - proxy
+      - messages-internal
+      - mood-journal-internal
+      - gog-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clawd.entrypoints=http"
+      - "traefik.http.routers.clawd.rule=Host(`${OPENCLAW_HOST}`)"
+      - "traefik.http.middlewares.clawd-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.clawd.middlewares=clawd-https-redirect"
+      - "traefik.http.routers.clawd-secure.entrypoints=https"
+      - "traefik.http.routers.clawd-secure.rule=Host(`${OPENCLAW_HOST}`)"
+      - "traefik.http.routers.clawd-secure.tls=true"
+      - "traefik.http.routers.clawd-secure.service=clawd"
+      - "traefik.http.services.clawd.loadbalancer.server.port=18789"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+  messages-internal:
+    external: true
+    name: messages-internal
+  mood-journal-internal:
+    external: true
+    name: mood-journal-internal
+  gog-internal:
+    external: true
+    name: gog-internal

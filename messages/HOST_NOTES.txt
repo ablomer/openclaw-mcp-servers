@@ -1,0 +1,33 @@
+OpenClaw host merge (do this on the production machine, never commit live config)
+
+1. Disable the native WhatsApp send channel
+   plugins.entries.whatsapp.enabled = false
+
+2. Confirm gateway.nodes.commands.deny includes sms.send (already present).
+
+3. Merge messages/openclaw.messages.snippet.json into
+   ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
+   - agents.entries.messages  (local koboldcpp only; web/exec locked down)
+   - mcp.servers.messages-readonly -> http://messages-mcp:3000/mcp
+
+4. Attach the openclaw service to the messages-internal Docker network
+   (already patched in the repo-root docker-compose.yml). Recreate the
+   openclaw container after `docker network create --internal messages-internal`.
+
+5. Cloud models (Gemini/OpenRouter) will exfiltrate any MCP tool result.
+   Query personal message history through the `messages` agent only.
+
+6. Rotate any credentials that were copied into this workspace.
+
+7. Instagram session bootstrap (on a trusted tty, never in MCP):
+   DATA_DIR=... SESSIONS_DIR=$DATA_DIR/openclaw/messages-data/sessions \
+     INSTAGRAM_USERNAME=... INSTAGRAM_PASSWORD=... \
+     node messages/workers/instagram/src/login.js
+
+8. Google Messages pairing (on a trusted tty, never in MCP):
+   Firefox private window ->
+     https://accounts.google.com/AccountChooser?continue=https://messages.google.com/web/config
+   Copy /web/config as curl or JSON cookies (SID, HSID, SSID, OSID, APISID, SAPISID)
+   into ${DATA_DIR}/openclaw/messages-data/sessions/gmessages/cookies.json
+   Confirm the emoji logged by gmessages-worker on the phone.
+

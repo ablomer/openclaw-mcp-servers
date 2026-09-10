@@ -1,0 +1,15 @@
+OpenClaw host merge (do this on the production machine, never commit live config)
+
+1. Merge mood-journal/openclaw.mood-journal.snippet.json into
+   ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
+   - mcp.servers.mood-journal -> http://mood-journal-mcp:3000/mcp
+
+2. Attach the openclaw service to the mood-journal-internal Docker network
+   (already patched in the repo-root docker-compose.yml). Recreate the
+   openclaw container after `docker network create --internal mood-journal-internal`.
+
+3. Cloud models (Gemini/OpenRouter) will exfiltrate any MCP tool result.
+   Query personal journal history through a local-only agent when possible.
+
+4. Host data lives at ${DATA_DIR}/openclaw/mood-journal-data/{db,backups}.
+   The MCP process is the only writer (uid 65532).
