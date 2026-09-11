@@ -103,6 +103,7 @@ test('emailPrefix is read-only and cannot send', () => {
     false,
     'sanitize-content is a gmail get/thread flag, not a global gog flag',
   );
+  assert.equal(prefix.includes('--wrap-untrusted'), false);
   assert.deepEqual(accountFlags({}), []);
 });
 
@@ -123,6 +124,7 @@ test('calendarPrefix allowlists events and disables admin commands', () => {
   assert.match(disabled, /delete-calendar/);
   assert.match(disabled, /acl/);
   assert.equal(prefix.includes('--readonly'), false);
+  assert.equal(prefix.includes('--wrap-untrusted'), false);
 });
 
 test('flagValue and positionals keep user strings as discrete slots', () => {

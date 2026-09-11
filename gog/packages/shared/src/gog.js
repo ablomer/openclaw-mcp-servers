@@ -8,7 +8,6 @@ export const DEFAULT_MAX_OUTPUT_BYTES = 102_400;
 export const COMMON_FLAGS = Object.freeze([
   '--json',
   '--no-input',
-  '--wrap-untrusted',
   '--color=never',
 ]);
 

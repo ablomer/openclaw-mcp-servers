@@ -1,6 +1,6 @@
 # OpenClaw MCP Server Guide
 
-This repo exposes **five** MCP servers over Streamable HTTP. OpenClaw reaches them on the internal Docker networks; they are not published on the host and have no Traefik routes.
+This repo exposes **six** MCP servers over Streamable HTTP. OpenClaw reaches them on the internal Docker networks; they are not published on the host and have no Traefik routes.
 
 | Server | MCP name | Container | URL | Mode |
 | --- | --- | --- | --- | --- |
@@ -9,6 +9,7 @@ This repo exposes **five** MCP servers over Streamable HTTP. OpenClaw reaches th
 | Messages | `messages` | `messages-mcp` | `http://messages-mcp:3000/mcp` | Read-only archive of WhatsApp, Google Messages, and Instagram. Cannot send. |
 | Mood journal | `mood-journal` | `mood-journal-mcp` | `http://mood-journal-mcp:3000/mcp` | Read/write personal journal. Server owns timestamps. |
 | Google Health | `google-health` | `google-health-mcp` | `http://google-health-mcp:3000/mcp` | Read-only sleep, exercise, and daily activity. Cannot write health data. |
+| Context | `context` | `context-mcp` | `http://context-mcp:3000/mcp` | Read-only aggregated dump of memories, messages, calendar, and inbox. |
 
 Transport in OpenClaw config is `streamable-http`. Each process also serves `GET /healthz` on the same port.
 
@@ -41,7 +42,9 @@ If the JSON payload exceeds **32 KiB**, the server replaces it with:
 }
 ```
 
-Email and calendar wrap the `gog` CLI (`--json`). A `gog` timeout (30s) or output over 100 KiB becomes an error result. Google Health calls `health.googleapis.com` with a 30s timeout; sleep/exercise lists stop at 50 sessions.
+`context` is the exception: `generate_context` is an aggregated dump, so its cap is **256 KiB** (`payload exceeded 256KiB cap`).
+
+Email and calendar wrap the `gog` CLI (`--json`). A `gog` timeout (30s) or output over 100 KiB becomes an error result. Google Health calls `health.googleapis.com` with a 30s timeout; sleep/exercise lists stop at 50 sessions. Context calls the messages, calendar, and email MCP servers over the internal Docker networks.
 
 ### How to call a tool
 
@@ -130,7 +133,7 @@ Send, reply, draft, label mutation, trash, or any write. There is no send tool.
 Google Calendar via `gog`. Event create/update/delete and RSVP are allowed. Calendar admin is disabled: `calendar.create-calendar`, `calendar.delete-calendar`, `calendar.acl`, `calendar.subscribe`, `calendar.unsubscribe`.
 
 - **Health:** `{ "ok": true, "gog": true }` when `gog` exists.
-- **Default calendar:** omit `calendar_id` or pass `""` → `primary`.
+- **Default calendar:** omit `calendar_id`, pass `""`, or pass `"primary"`. The server does not send the alias `primary` to gog (gog only accepts ids/names from `list_calendars`). It omits `--cal` and lets gog use the account default.
 - **Datetimes:** RFC 3339 / ISO-8601 strings, max 128 characters. Examples: `2026-09-08T10:00:00-04:00`, `2026-09-08`.
 - **Recurring events:** `scope` is `"single"` or `"all"`. `original_start` identifies one instance.
 
@@ -359,10 +362,12 @@ Create/delete calendars, ACL changes, subscribe/unsubscribe.
 Read-only SQLite archive filled by WhatsApp, Google Messages, and Instagram workers. The MCP process mounts the DB **read-only** and never sends.
 
 - **Health:** `{ "ok": true, "readonly": true }`
+- **Timezone:** `America/New_York` in compose (`TZ`).
 - **Sources:** `whatsapp`, `gmessages`, `instagram`
-- **`chat_id`:** `source:nativeId`, e.g. `whatsapp:family`, `instagram:maya`. Invalid ids error.
-- **Timestamps:** `last_message_at`, `sent_at`, and `before_ts` are Unix milliseconds.
-- **Full-text search:** operators (`AND`/`OR`/`NOT`/`NEAR`) and punctuation are stripped; the remaining phrase is matched. After stripping, the query must still have at least 2 alphanumeric characters.
+- **Ids:** `chat_id`, message `id`, and `reply_to_id` are `source:nativeId`, e.g. `whatsapp:family`, `instagram:maya`. Malformed ids error `invalid chat_id`.
+- **Timestamps:** `list_recent_conversations`, `get_thread_history`, and `search_messages` still use Unix milliseconds for `last_message_at`, `sent_at`, and `before_ts`. `list_messages` uses calendar dates and weekday display times only.
+- **Deleted rows:** workers may set `is_deleted`; these queries do not filter it, so deleted messages can still appear.
+- **Full-text search:** operators (`AND`/`OR`/`NOT`/`NEAR`) and `"'*(){}[]^~:` are stripped; the remaining phrase is matched. After stripping, at least 2 characters must remain.
 - **Search results** include a `snippet`, never the full `body` or `raw_json`.
 
 ### `list_recent_conversations`
@@ -398,11 +403,11 @@ Paging: pass the oldest `last_message_at` from the previous page as `before_ts`.
 }
 ```
 
-`thread_type` is `dm`, `group`, or `unknown`. `last_preview` is at most 180 characters.
+`thread_type` is `dm`, `group`, or `unknown`. `last_preview` is the body trimmed to 180 characters, with `…` appended if it was cut; empty bodies are `null`.
 
 ### `get_thread_history`
 
-Recent messages for one chat (newest first). Unknown `chat_id` → error `Unknown chat_id`.
+Recent messages for one chat (newest first). Malformed `chat_id` → `invalid chat_id`. Unknown `chat_id` → `Unknown chat_id`.
 
 | Argument | Type | Required | Constraints | Default |
 | --- | --- | --- | --- | --- |
@@ -437,7 +442,61 @@ Recent messages for one chat (newest first). Unknown `chat_id` → error `Unknow
 Newest first. Use `before_ts` with the oldest `sent_at` from a page to walk further back.
 
 `direction`: `inbound`, `outbound`, `system`.  
-`message_type`: `text`, `image`, `video`, `audio`, `document`, `sticker`, `reaction`, `other`.
+`message_type`: `text`, `image`, `video`, `audio`, `document`, `sticker`, `reaction`, `other`.  
+`sender` is the contact display name, or `null` if there is no contact row.
+
+### `list_messages`
+
+Messages in a calendar-day range, grouped by thread. Dates are **America/New_York**. No Unix timestamps. The window cannot exceed **14** days (`range exceeds 14 days`). Use only one of `today`, `days`, or `from`/`to`. Date-only `from` is start of that local day; date-only `to` includes that whole day. Omit `from` with `to` set and the window is 3 days ending on `to`.
+
+| Argument | Type | Required | Constraints | Default |
+| --- | --- | --- | --- | --- |
+| `from` | string | no | max 128; `YYYY-MM-DD`, `YYYY-MM-DDTHH:mm`, or a weekday timestamp such as `Tuesday, 2026-09-08 10:00:00 AM EDT` | last 3 days through today, or 3 days ending on `to` |
+| `to` | string | no | same formats, max 128; date-only `to` includes that whole day | end of today |
+| `days` | integer | no | 1–14; not with `from`/`to` or `today` | `3` when no `from`/`to`/`today` |
+| `today` | boolean | no | not with `days` or `from`/`to` | false |
+| `source` | `"whatsapp"` \| `"gmessages"` \| `"instagram"` | no | — | all |
+| `limit` | integer | no | 1–200 total messages (newest first, then grouped) | `200` |
+| `include_empty` | boolean | no | include messages with no body (media-only, stickers, etc.) | `false` |
+
+```json
+{ "from": "2026-09-08", "to": "2026-09-10" }
+```
+
+```json
+{ "days": 3 }
+```
+
+**Returns**
+
+```json
+{
+  "from": "2026-09-08",
+  "to": "2026-09-10",
+  "truncated": false,
+  "threads": [
+    {
+      "chat_id": "instagram:maya",
+      "source": "instagram",
+      "title": "Maya",
+      "thread_type": "dm",
+      "messages": [
+        {
+          "id": "instagram:ig-2",
+          "sender": "Maya",
+          "direction": "inbound",
+          "sent_at": "Thursday, 2026-09-10 11:00:00 AM EDT",
+          "message_type": "text",
+          "body": "running a few minutes late",
+          "reply_to_id": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+Threads are newest activity first. Messages inside a thread are oldest first (conversation order). By default, rows with a null or whitespace-only `body` are omitted (set `include_empty: true` to keep media-only and other body-less messages). `truncated: true` means more than `limit` messages matched; narrow `from`/`to` or raise `limit`.
 
 ### `search_messages`
 
@@ -445,9 +504,9 @@ Full-text search over archived bodies. Snippets only.
 
 | Argument | Type | Required | Constraints | Default |
 | --- | --- | --- | --- | --- |
-| `query` | string | yes | min 2 characters (and ≥2 alphanumerics after FTS escape) | — |
+| `query` | string | yes | min 2 characters; after FTS strip, at least 2 characters must remain | — |
 | `source` | `"whatsapp"` \| `"gmessages"` \| `"instagram"` | no | — | all |
-| `chat_id` | string | no | `source:nativeId` if set | all chats |
+| `chat_id` | string | no | `source:nativeId` if set; malformed → `invalid chat_id` | all chats |
 | `limit` | integer | no | 1–50 | `20` |
 | `before_ts` | number | no | Unix ms; `sent_at` **&lt;** this | — |
 
@@ -478,7 +537,7 @@ Full-text search over archived bodies. Snippets only.
 }
 ```
 
-Newest matches first. There is no `body` field.
+Newest matches first. There is no `body` field. A well-formed but unknown `chat_id` returns an empty `results` list.
 
 ### Not available
 
@@ -496,7 +555,7 @@ Writable local journal. The server sets `recorded_at` on create and never accept
 - **Delete:** soft delete. Deleted rows disappear from get/list/search/aggregates.
 - **Tags:** lowercase `[a-z0-9_-]`, 1–32 chars each, max 12, de-duplicated. Invalid example: `NO SPACES`.
 - **Dates:** `YYYY-MM-DD`, `YYYY-MM-DDTHH:mm`, or a `display_recorded_at` string such as `Tuesday, 2026-09-01 8:00:00 AM EDT`. A date-only `from` is start of that local day; a date-only `to` is end of that local day.
-- **Search:** same FTS escaping as messages (phrase match, ≥2 alphanumerics after strip).
+- **Search:** same FTS escaping as messages (phrase match, ≥2 characters after strip).
 
 ### Shared field types
 
@@ -904,15 +963,87 @@ Missing metrics are `null`. Data appears after the Fitbit / Google Health app sy
 
 ---
 
+## 6. Context (`context`)
+
+Read-only aggregate of OpenClaw workspace memories plus the messages, calendar, and email MCP servers. Replaces the old `scripts/generate_context.js` exec helper. Cannot write files or call any mutating tool.
+
+- **Health:** `{ "ok": true, "workspace": true }` when `WORKSPACE_DIR` exists.
+- **Sources:** `MEMORY.md` and the last three daily logs under `memory/YYYY-MM-DD.md`; `messages.list_messages` (3 days, limit 30); `calendar.list_events` (next 2 events, 30-day window); `email.search_messages` (`in:inbox newer_than:3m`, max 20) with `get_message` for bodies.
+- **Cap:** 256 KiB. Section-level MCP errors are fields on that section (`error`); they do not fail the whole call.
+- **Time:** Downstream MCP calls abort after 10s. Inbox bodies are fetched 6 at a time (search snippets if the budget is exhausted). OpenClaw config should set `requestTimeoutMs: 120000` for this server.
+
+### `generate_context`
+
+Build the full context dump. No arguments.
+
+```json
+{}
+```
+
+**Returns**
+
+```json
+{
+  "generated_at": "2026-09-10T19:00:00.000Z",
+  "memories": {
+    "long_term": "I live in Brooklyn.",
+    "daily_logs": [
+      { "date": "2026-09-10", "content": "shipped context MCP" }
+    ]
+  },
+  "messages": {
+    "threads": [
+      {
+        "title": "Ada",
+        "source": "whatsapp",
+        "thread_type": "dm",
+        "messages": [
+          { "sender": "Ada", "sent_at": "2026-09-10 10:00", "body": "hi" }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "events": [
+      {
+        "summary": "Standup",
+        "start": "2026-09-11T09:00:00-04:00",
+        "end": "2026-09-11T09:30:00-04:00",
+        "notes": "daily"
+      }
+    ]
+  },
+  "inbox": {
+    "threads": [
+      {
+        "subject": "Invoice",
+        "from": "billing@example.com",
+        "date": "2026-09-01",
+        "body": "Please pay $20"
+      }
+    ]
+  }
+}
+```
+
+Empty sections use `null` / `[]`. A failed downstream call is `{ "error": "…", "threads": [] }` (or `"events": []` for calendar). Missing `MEMORY.md` is `"long_term": null`.
+
+### Not available
+
+Partial dumps, date-range overrides, or writes. There is no tool other than `generate_context`.
+
+---
+
 ## Quick reference
 
 | Server | Tools |
 | --- | --- |
 | `email` | `search_messages`, `get_message`, `get_thread`, `list_labels` |
 | `calendar` | `list_calendars`, `list_events`, `get_event`, `search_events`, `create_event`, `update_event`, `delete_event`, `find_conflicts`, `get_freebusy`, `respond_event` |
-| `messages` | `list_recent_conversations`, `get_thread_history`, `search_messages` |
+| `messages` | `list_recent_conversations`, `get_thread_history`, `list_messages`, `search_messages` |
 | `mood-journal` | `add_entry`, `update_entry`, `delete_entry`, `get_entry`, `list_entries`, `search_entries`, `summarize_range`, `mood_by_period`, `compare_tagged`, `list_tags` |
 | `google-health` | `list_sleep`, `get_sleep`, `list_exercises`, `get_exercise`, `summarize_activity` |
+| `context` | `generate_context` |
 
 `search_messages` exists on both email and messages. They are different tools on different servers (Gmail query vs local FTS).
 
@@ -920,15 +1051,15 @@ Missing metrics are `null`. Data appears after the Fitbit / Google Health app sy
 
 ## Capability boundaries
 
-| Action | email | calendar | messages | mood-journal | google-health |
-| --- | --- | --- | --- | --- | --- |
-| Read personal data | yes | yes | yes | yes | yes |
-| Send mail / messages | no | — | no | — | — |
-| Create/update/delete events | — | yes | — | — | — |
-| Create/delete calendars | — | no | — | — | — |
-| Write journal entries | — | — | — | yes | — |
-| Write health data | — | — | — | — | no |
+| Action | email | calendar | messages | mood-journal | google-health | context |
+| --- | --- | --- | --- | --- | --- | --- |
+| Read personal data | yes | yes | yes | yes | yes | yes |
+| Send mail / messages | no | — | no | — | — | no |
+| Create/update/delete events | — | yes | — | — | — | no |
+| Create/delete calendars | — | no | — | — | — | — |
+| Write journal entries | — | — | — | yes | — | — |
+| Write health data | — | — | — | — | no | — |
 
-Cloud models will see any tool result you send them. Prefer the local-only agents in each project’s `openclaw.*.snippet.json` for mail, calendar, messages, journal, and health data.
+Cloud models will see any tool result you send them. Prefer the local-only agents in each project’s `openclaw.*.snippet.json` for mail, calendar, messages, journal, health data, and the context dump.
 
 Host merge (networks, OpenClaw `mcp.servers` URLs, gog keyring, Google Health tokens) is documented in each project’s `HOST_NOTES.txt`, not here.

@@ -61,6 +61,33 @@ test('migrate + upsert + fts', () => {
   db.close();
 });
 
+test('conversation title ignores native ids and does not overwrite a real name', () => {
+  const titleDbPath = join(dir, 'titles.sqlite');
+  const db = migrate(titleDbPath);
+  const writer = new MessageWriter(db);
+  writer.upsertConversation({
+    source: 'whatsapp',
+    nativeId: '5630769295596@lid',
+    title: '5630769295596@lid',
+    threadType: 'dm',
+  });
+  writer.upsertConversation({
+    source: 'whatsapp',
+    nativeId: '5630769295596@lid',
+    title: 'Maria',
+    threadType: 'dm',
+  });
+  writer.upsertConversation({
+    source: 'whatsapp',
+    nativeId: '5630769295596@lid',
+    title: '5630769295596@lid',
+    threadType: 'dm',
+  });
+  const conv = db.prepare("SELECT title FROM conversations WHERE native_id = '5630769295596@lid'").get();
+  assert.equal(conv.title, 'Maria');
+  db.close();
+});
+
 test('readOnly connection rejects writes', () => {
   const ro = openReadOnlyDb(dbPath);
   assert.throws(() => {

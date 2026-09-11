@@ -1,0 +1,28 @@
+OpenClaw host merge (do this on the production machine, never commit live config)
+
+1. Merge context/openclaw.context.snippet.json into
+   ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
+   - mcp.servers.context -> http://context-mcp:3000/mcp
+   - mcp.servers.context.requestTimeoutMs -> 120000
+     (generate_context fans out to email/calendar/messages; the default
+     60s MCP timeout is too short)
+   - optional agents.entries.context
+     (local koboldcpp only; web/exec locked down)
+
+2. Attach the openclaw service to the context-internal Docker network
+   (already patched in the repo-root docker-compose.yml). Recreate the
+   openclaw container after:
+     docker network create --internal context-internal
+
+   OpenClaw must join context-internal only — never messages-egress or
+   gog-egress. context-mcp itself also joins messages-internal and
+   gog-internal so it can call those MCP servers.
+
+3. Workspace files (MEMORY.md, memory/YYYY-MM-DD.md) live in
+   ${DATA_DIR}/openclaw/data/workspace and are mounted read-only at
+   /workspace. The MCP process runs as uid 1000 to match OpenClaw's
+   node user. OpenClaw must NEVER mount gog-data or the message db.
+
+4. Cloud models will exfiltrate any MCP tool result. generate_context
+   returns a combined dump of memories, messages, calendar, and inbox
+   mail — query it through a local-only agent when possible.

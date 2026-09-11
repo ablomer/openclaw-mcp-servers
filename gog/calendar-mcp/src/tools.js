@@ -31,6 +31,13 @@ async function invoke(exec, args) {
   }
 }
 
+function calendarPositionals(calendar_id, ...rest) {
+  const cal = calendarId(calendar_id);
+  const values = cal ? [cal, ...rest] : rest.filter((v) => v != null && v !== '');
+  if (values.length === 0) return [];
+  return positionals(...values);
+}
+
 function eventWriteFlags({
   summary,
   from,
@@ -101,7 +108,7 @@ export function createTools({ runGog } = {}) {
         ...prefix(),
         'calendar',
         'event',
-        ...positionals(calendarId(calendar_id), event_id),
+        ...calendarPositionals(calendar_id, event_id),
       ]);
     },
 
@@ -123,7 +130,7 @@ export function createTools({ runGog } = {}) {
         'calendar',
         'create',
         ...eventWriteFlags(args),
-        ...positionals(calendarId(args.calendar_id)),
+        ...calendarPositionals(args.calendar_id),
       ]);
     },
 
@@ -133,7 +140,7 @@ export function createTools({ runGog } = {}) {
         'calendar',
         'update',
         ...eventWriteFlags(args),
-        ...positionals(calendarId(args.calendar_id), args.event_id),
+        ...calendarPositionals(args.calendar_id, args.event_id),
       ]);
     },
 
@@ -145,7 +152,7 @@ export function createTools({ runGog } = {}) {
         '--force',
         ...flagValue('--scope', scope),
         ...flagValue('--original-start', original_start),
-        ...positionals(calendarId(calendar_id), event_id),
+        ...calendarPositionals(calendar_id, event_id),
       ]);
     },
 
@@ -181,7 +188,7 @@ export function createTools({ runGog } = {}) {
         'calendar',
         'respond',
         ...flagValue('--status', status),
-        ...positionals(calendarId(calendar_id), event_id),
+        ...calendarPositionals(calendar_id, event_id),
       ]);
     },
   };

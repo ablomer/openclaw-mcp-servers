@@ -47,6 +47,7 @@ services:
       MESSAGES_DB_PATH: /data/messages.sqlite
       PORT: "3000"
       HOST: 0.0.0.0
+      TZ: America/New_York
     networks:
       - messages-internal
     pids_limit: 256

@@ -1,0 +1,15 @@
+{
+  "name": "openclaw-context",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "mcp-server"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "check": "node --check mcp-server/src/index.js && node --check mcp-server/src/server.js && node --check mcp-server/src/tools.js && node --check mcp-server/src/generate.js && node --check mcp-server/src/mcp-client.js && node --check mcp-server/src/validate.js && node --check mcp-server/src/log.js"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

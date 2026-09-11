@@ -15,10 +15,11 @@ test('whatsapp worker source never calls send/relay APIs', () => {
   assert.doesNotMatch(src, /\.relayMessage\s*\(/);
 });
 
-test('mcp server exposes only the three read tools', () => {
+test('mcp server exposes only the four read tools', () => {
   const src = readFileSync(join(root, 'mcp-server/src/server.js'), 'utf8');
   assert.match(src, /list_recent_conversations/);
   assert.match(src, /get_thread_history/);
+  assert.match(src, /list_messages/);
   assert.match(src, /search_messages/);
   assert.doesNotMatch(src, /send_/);
 });

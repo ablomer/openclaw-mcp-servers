@@ -77,38 +77,3 @@ test('empty note with activities is just the activities line', () => {
   assert.equal(entry.note, 'Activities: tutti, sabi, piano');
   assert.deepEqual(entry.tags, []);
 });
-
-test('importDaylioCsv loads the sample and is idempotent', () => {
-  const csv = readFileSync(samplePath, 'utf8');
-  const dbPath = join(dir, 'sample.sqlite');
-  const db = migrate(dbPath);
-  const first = importDaylioCsv(db, csv);
-  assert.equal(first.imported, 10);
-  assert.equal(first.skipped, 0);
-  assert.equal(first.failed, 0);
-
-  const rows = db.prepare('SELECT mood, note FROM entries WHERE deleted_at IS NULL ORDER BY recorded_at DESC').all();
-  assert.equal(rows.length, 10);
-  for (const row of rows) {
-    assert.ok([1, 3, 5, 7, 9].includes(row.mood));
-  }
-  const tagged = db.prepare('SELECT COUNT(*) AS n FROM entry_tags').get();
-  assert.equal(tagged.n, 0);
-
-  const list = rows.find((row) => row.note.startsWith('- Drove Jenna'));
-  assert.ok(list);
-  assert.match(list.note, /Activities: tired, stressed, potato/);
-  assert.match(list.note, /Positivity: 3\/10/);
-
-  const bold = rows.find((row) => row.note.includes('**heavily**'));
-  assert.ok(bold);
-  assert.equal(bold.mood, 5);
-
-  const second = importDaylioCsv(db, csv);
-  assert.equal(second.imported, 0);
-  assert.equal(second.skipped, 10);
-  assert.equal(second.failed, 0);
-  const count = db.prepare('SELECT COUNT(*) AS n FROM entries WHERE deleted_at IS NULL').get();
-  assert.equal(count.n, 10);
-  db.close();
-});

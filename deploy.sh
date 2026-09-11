@@ -3,6 +3,8 @@
 # Syncs files, prepares networks/volumes, and builds images (does not start
 # containers). Compose/BuildKit cache rebuilds only layers whose context changed.
 # Never rsync openclaw.json, .env, live OpenClaw data, sessions, or sqlite files.
+# Repo scripts/ is synced separately to ${REMOTE_DIR}/scripts/exposed (the
+# OpenClaw scripts mount); the main rsync still excludes /scripts.
 #
 # Override via env or a local .env: REMOTE_HOST, REMOTE_USER, SSH_KEY, DATA_DIR, REMOTE_DIR
 
@@ -13,6 +15,7 @@ MESSAGES_DIR="${SCRIPT_DIR}/messages"
 MOOD_JOURNAL_DIR="${SCRIPT_DIR}/mood-journal"
 GOG_DIR="${SCRIPT_DIR}/gog"
 GOOGLE_HEALTH_DIR="${SCRIPT_DIR}/google-health"
+CONTEXT_DIR="${SCRIPT_DIR}/context"
 
 if [ -f "${SCRIPT_DIR}/.env" ]; then
   set -a
@@ -63,6 +66,9 @@ need=(
   google-health/packages/shared/src/client.js
   google-health/scripts/init-volumes.sh
   google-health/scripts/auth.mjs
+  context/docker-compose.yml
+  context/mcp-server/src/index.js
+  context/mcp-server/src/generate.js
 )
 for f in "${need[@]}"; do
   [ -f "$f" ] || { echo "Missing $f in ${SCRIPT_DIR}" >&2; exit 1; }
@@ -77,8 +83,9 @@ fi
 ( cd "$MOOD_JOURNAL_DIR" && npm run check && npm test )
 ( cd "$GOG_DIR" && npm run check && npm test )
 ( cd "$GOOGLE_HEALTH_DIR" && npm run check && npm test )
+( cd "$CONTEXT_DIR" && npm run check && npm test )
 
-ssh "${COMMON_ARGS[@]}" "mkdir -p \"${REMOTE_DIR}\" \"${DATA_DIR}/openclaw/messages-data/db\" \"${DATA_DIR}/openclaw/messages-data/sessions\" \"${DATA_DIR}/openclaw/messages-data/backups\" \"${DATA_DIR}/openclaw/mood-journal-data/db\" \"${DATA_DIR}/openclaw/mood-journal-data/backups\" \"${DATA_DIR}/openclaw/gog-data/keyring\" \"${DATA_DIR}/openclaw/google-health-data\""
+ssh "${COMMON_ARGS[@]}" "mkdir -p \"${REMOTE_DIR}\" \"${REMOTE_DIR}/scripts/exposed\" \"${DATA_DIR}/openclaw/messages-data/db\" \"${DATA_DIR}/openclaw/messages-data/sessions\" \"${DATA_DIR}/openclaw/messages-data/backups\" \"${DATA_DIR}/openclaw/mood-journal-data/db\" \"${DATA_DIR}/openclaw/mood-journal-data/backups\" \"${DATA_DIR}/openclaw/gog-data/keyring\" \"${DATA_DIR}/openclaw/google-health-data\" \"${DATA_DIR}/openclaw/data/workspace\""
 
 RSYNC_RSH="ssh ${SSH_OPTS[*]}"
 rsync -az --delete -e "$RSYNC_RSH" \
@@ -107,6 +114,10 @@ rsync -az --delete -e "$RSYNC_RSH" \
   --exclude /backups \
   "${SCRIPT_DIR}/" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/"
 
+rsync -az --delete -e "$RSYNC_RSH" \
+  "${SCRIPT_DIR}/scripts/" \
+  "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/scripts/exposed/"
+
 ssh "${COMMON_ARGS[@]}" bash -s <<EOF
 set -euo pipefail
 export DATA_DIR="${DATA_DIR}"
@@ -120,6 +131,7 @@ docker network inspect gog-internal >/dev/null 2>&1 || docker network create --i
 docker network inspect gog-egress >/dev/null 2>&1 || docker network create gog-egress
 docker network inspect google-health-internal >/dev/null 2>&1 || docker network create --internal google-health-internal
 docker network inspect google-health-egress >/dev/null 2>&1 || docker network create google-health-egress
+docker network inspect context-internal >/dev/null 2>&1 || docker network create --internal context-internal
 cd "${REMOTE_DIR}"
 DATA_DIR="${DATA_DIR}" docker compose -f docker-compose.yml build
 echo
@@ -130,6 +142,7 @@ echo "MCP: messages-mcp:3000/mcp on messages-internal (no published ports)"
 echo "MCP: mood-journal-mcp:3000/mcp on mood-journal-internal (no published ports)"
 echo "MCP: email-mcp:3000/mcp and calendar-mcp:3000/mcp on gog-internal (no published ports)"
 echo "MCP: google-health-mcp:3000/mcp on google-health-internal (no published ports)"
+echo "MCP: context-mcp:3000/mcp on context-internal (no published ports; also joins messages-internal and gog-internal)"
 echo "Pair WhatsApp: docker compose logs -f whatsapp-worker"
 echo "Pair Google Messages: write cookies.json or cookies.curl to ${DATA_DIR}/openclaw/messages-data/sessions/gmessages and confirm the emoji on the phone"
 echo "Instagram session: ${DATA_DIR}/openclaw/messages-data/sessions/instagram/session.json"
@@ -137,11 +150,13 @@ echo "Merge messages/openclaw.messages.snippet.json into ${DATA_DIR}/openclaw/da
 echo "Merge mood-journal/openclaw.mood-journal.snippet.json into ${DATA_DIR}/openclaw/data (openclaw.json)."
 echo "Merge gog/openclaw.gog.snippet.json into ${DATA_DIR}/openclaw/data (openclaw.json)."
 echo "Merge google-health/openclaw.google-health.snippet.json into ${DATA_DIR}/openclaw/data (openclaw.json)."
+echo "Merge context/openclaw.context.snippet.json into ${DATA_DIR}/openclaw/data (openclaw.json)."
 echo "Then: docker exec <openclaw> openclaw mcp probe messages"
 echo "Then: docker exec <openclaw> openclaw mcp probe mood-journal"
 echo "Then: docker exec <openclaw> openclaw mcp probe email"
 echo "Then: docker exec <openclaw> openclaw mcp probe calendar"
 echo "Then: docker exec <openclaw> openclaw mcp probe google-health"
+echo "Then: docker exec <openclaw> openclaw mcp probe context"
 EOF
 
 echo "Deployed to ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}"

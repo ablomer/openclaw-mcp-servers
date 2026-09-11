@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CALENDAR_DISABLED } from '@openclaw-gog/shared';
 import { createTools } from '../src/tools.js';
+import { calendarId } from '../src/validate.js';
 
 function fakeRunner() {
   const calls = [];
@@ -42,7 +43,8 @@ test('create_event writes an appointment, never create-calendar', async () => {
   assert.ok(args.includes('create'));
   assert.equal(args[args.indexOf('--summary') + 1], '--force');
   assert.equal(args[args.indexOf('--attendees') + 1], 'ada@example.com,al@example.com');
-  assert.deepEqual(afterDash(args), ['primary']);
+  assert.equal(args.includes('primary'), false);
+  assert.equal(args.includes('--'), false);
 });
 
 test('update_event and delete_event keep ids after --', async () => {
@@ -62,7 +64,8 @@ test('update_event and delete_event keep ids after --', async () => {
   assertNoAdmin(calls[1]);
   assert.deepEqual(afterDash(calls[0]), ['--account evil', 'evt1']);
   assert.ok(calls[1].includes('--force'));
-  assert.deepEqual(afterDash(calls[1]), ['primary', 'evt1 && rm -rf /']);
+  assert.deepEqual(afterDash(calls[1]), ['evt1 && rm -rf /']);
+  assert.equal(calls[1].includes('primary'), false);
   assert.equal(calls[1].filter((a) => a === 'acl').length, 0);
 });
 
@@ -90,10 +93,31 @@ test('list_calendars / list_events / get_event / scheduling helpers', async () =
 
   assert.deepEqual(calls[0].slice(-2), ['calendar', 'calendars']);
   assert.ok(calls[1].includes('--today'));
+  assert.equal(calls[1].includes('--cal'), false);
   assert.equal(calls[1][calls[1].indexOf('--query') + 1], 'standup');
-  assert.deepEqual(afterDash(calls[2]), ['primary', 'abc']);
+  assert.deepEqual(afterDash(calls[2]), ['abc']);
+  assert.equal(calls[2].includes('primary'), false);
   assert.ok(calls[3].includes('conflicts'));
   assert.ok(calls[4].includes('freebusy'));
   assert.equal(calls[5][calls[5].indexOf('--status') + 1], 'tentative');
   for (const args of calls) assertNoAdmin(args);
+});
+
+test('calendarId treats primary as the account default', () => {
+  assert.equal(calendarId(undefined), '');
+  assert.equal(calendarId(''), '');
+  assert.equal(calendarId('primary'), '');
+  assert.equal(calendarId('me@example.com'), 'me@example.com');
+});
+
+test('list_events omits --cal for primary and sends a real calendar id', async () => {
+  const { calls, tools } = fakeRunner();
+  await tools.listEvents({ calendar_id: 'primary', max: 2 });
+  await tools.listEvents({ max: 2 });
+  await tools.listEvents({ calendar_id: 'me@example.com', max: 2 });
+
+  assert.equal(calls[0].includes('--cal'), false);
+  assert.equal(calls[0].includes('primary'), false);
+  assert.equal(calls[1].includes('--cal'), false);
+  assert.equal(calls[2][calls[2].indexOf('--cal') + 1], 'me@example.com');
 });

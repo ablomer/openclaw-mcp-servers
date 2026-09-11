@@ -7,6 +7,7 @@ include:
   - path: ./mood-journal/docker-compose.yml
   - path: ./gog/docker-compose.yml
   - path: ./google-health/docker-compose.yml
+  - path: ./context/docker-compose.yml
 
 services:
   openclaw:
@@ -22,6 +23,7 @@ services:
       - mood-journal-internal
       - gog-internal
       - google-health-internal
+      - context-internal
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.clawd.entrypoints=http"
@@ -50,3 +52,6 @@ networks:
   google-health-internal:
     external: true
     name: google-health-internal
+  context-internal:
+    external: true
+    name: context-internal

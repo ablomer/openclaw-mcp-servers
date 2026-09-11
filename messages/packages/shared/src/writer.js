@@ -1,6 +1,16 @@
 import { DIRECTIONS, MESSAGE_TYPES, THREAD_TYPES, entityId, isSource } from './sources.js';
 
 const PREVIEW_LEN = 180;
+const ADDRESS_TITLE = /@(?:lid|g\.us|s\.whatsapp\.net|broadcast|newsletter)$/i;
+
+export function usableConversationTitle(title, nativeId) {
+  if (title == null) return null;
+  const text = String(title).trim();
+  if (!text) return null;
+  if (nativeId != null && text === String(nativeId)) return null;
+  if (ADDRESS_TITLE.test(text)) return null;
+  return text;
+}
 
 function nowMs() {
   return Date.now();
@@ -107,7 +117,7 @@ export class MessageWriter {
         id,
         source,
         native_id: String(nativeId),
-        title,
+        title: usableConversationTitle(title, nativeId),
         thread_type: threadType,
         last_message_at: 0,
         last_preview: null,

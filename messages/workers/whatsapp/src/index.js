@@ -15,92 +15,40 @@ import {
   migrate,
   prepareWorkerProcess,
 } from '@openclaw-messages/shared';
+import {
+  ingestOne,
+  persistChat,
+  persistContact,
+  persistSelf,
+  rememberChat,
+  rememberContact,
+} from './ingest.js';
 
 prepareWorkerProcess();
 
-const SOURCE = 'whatsapp';
 const AUTH_DIR = join(SESSIONS_DIR, 'whatsapp');
 mkdirSync(AUTH_DIR, { recursive: true });
 
-function messageTypeOf(msg) {
-  const m = msg.message || {};
-  if (m.conversation || m.extendedTextMessage) return 'text';
-  if (m.imageMessage) return 'image';
-  if (m.videoMessage) return 'video';
-  if (m.audioMessage) return 'audio';
-  if (m.documentMessage) return 'document';
-  if (m.stickerMessage) return 'sticker';
-  if (m.reactionMessage) return 'reaction';
-  return 'other';
+function applyChats(writer, chats, rows = []) {
+  for (const chat of rows) {
+    rememberChat(chats, chat);
+    persistChat(writer, chats.get(chat?.id) || chat);
+  }
 }
 
-function bodyOf(msg) {
-  const m = msg.message || {};
-  return (
-    m.conversation ||
-    m.extendedTextMessage?.text ||
-    m.imageMessage?.caption ||
-    m.videoMessage?.caption ||
-    m.documentMessage?.caption ||
-    m.reactionMessage?.text ||
-    null
-  );
-}
-
-function replyNativeId(msg) {
-  const ctx = msg.message?.extendedTextMessage?.contextInfo;
-  return ctx?.stanzaId || null;
-}
-
-function conversationNativeId(msg) {
-  return msg.key.remoteJid;
-}
-
-function threadTypeOf(jid) {
-  if (!jid) return 'unknown';
-  if (jid.endsWith('@g.us')) return 'group';
-  if (jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid')) return 'dm';
-  return 'unknown';
-}
-
-function senderNativeId(msg) {
-  if (msg.key.fromMe) return 'me';
-  return msg.key.participant || msg.key.remoteJid;
-}
-
-function sentAt(msg) {
-  return (msg.messageTimestamp ? Number(msg.messageTimestamp) : Math.floor(Date.now() / 1000)) * 1000;
-}
-
-function ingestOne(writer, msg, chats = new Map()) {
-  if (!msg?.key?.id || !msg.key.remoteJid) return;
-  if (msg.messageStubType && !msg.message) return;
-  const remote = conversationNativeId(msg);
-  const chat = chats.get(remote);
-  writer.upsertMessage({
-    source: SOURCE,
-    nativeId: msg.key.id,
-    conversationNativeId: remote,
-    senderNativeId: senderNativeId(msg),
-    senderDisplayName: chat?.name || null,
-    direction: msg.key.fromMe ? 'outbound' : 'inbound',
-    sentAt: sentAt(msg),
-    messageType: messageTypeOf(msg),
-    body: bodyOf(msg),
-    replyToNativeId: replyNativeId(msg),
-    conversationTitle: chat?.name || remote,
-    threadType: threadTypeOf(remote),
-    raw: {
-      remoteJid: remote,
-      fromMe: !!msg.key.fromMe,
-      hasMedia: messageTypeOf(msg) !== 'text' && messageTypeOf(msg) !== 'other',
-    },
-  });
+function applyContacts(writer, contacts, rows = []) {
+  for (const contact of rows) {
+    rememberContact(contacts, contact);
+    persistContact(writer, contacts.get(contact?.id) || contact);
+  }
 }
 
 async function startSocket(writer) {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
+  const chats = new Map();
+  const contacts = new Map();
+  let selfName = persistSelf(writer, state.creds?.me);
 
   const sock = makeWASocket({
     version,
@@ -117,7 +65,10 @@ async function startSocket(writer) {
     throw new Error('outbound messaging is disabled');
   };
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('creds.update', (creds) => {
+    saveCreds(creds);
+    if (creds?.me) selfName = persistSelf(writer, creds.me);
+  });
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -126,6 +77,7 @@ async function startSocket(writer) {
       qrcode.generate(qr, { small: true });
     }
     if (connection === 'open') {
+      selfName = persistSelf(writer, sock.user || state.creds?.me);
       logEvent('whatsapp', 'connected');
     }
     if (connection === 'close') {
@@ -140,20 +92,34 @@ async function startSocket(writer) {
     }
   });
 
-  sock.ev.on('messaging-history.set', ({ messages = [], chats = [], isLatest }) => {
-    const chatMap = new Map(chats.map((c) => [c.id, c]));
+  sock.ev.on('messaging-history.set', ({ messages = [], chats: historyChats = [], contacts: historyContacts = [] }) => {
+    applyChats(writer, chats, historyChats);
+    applyContacts(writer, contacts, historyContacts);
     let n = 0;
     for (const msg of messages) {
-      ingestOne(writer, msg, chatMap);
+      ingestOne(writer, msg, { chats, contacts, selfName });
       n += 1;
     }
-    logEvent('whatsapp', 'history_set', { count: n, isLatest: !!isLatest });
+    logEvent('whatsapp', 'history_set', { count: n, chats: historyChats.length, contacts: historyContacts.length });
+  });
+
+  sock.ev.on('chats.upsert', (rows = []) => {
+    applyChats(writer, chats, rows);
+  });
+  sock.ev.on('chats.update', (rows = []) => {
+    applyChats(writer, chats, rows);
+  });
+  sock.ev.on('contacts.upsert', (rows = []) => {
+    applyContacts(writer, contacts, rows);
+  });
+  sock.ev.on('contacts.update', (rows = []) => {
+    applyContacts(writer, contacts, rows);
   });
 
   sock.ev.on('messages.upsert', ({ messages = [], type }) => {
     let n = 0;
     for (const msg of messages) {
-      ingestOne(writer, msg);
+      ingestOne(writer, msg, { chats, contacts, selfName });
       n += 1;
     }
     logEvent('whatsapp', 'upsert', { count: n, type });

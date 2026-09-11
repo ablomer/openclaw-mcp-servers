@@ -1,0 +1,41 @@
+{
+  "agents": {
+    "entries": {
+      "context": {
+        "model": "koboldcpp/gemma-4-31b-abliterated-q4",
+        "sandbox": {
+          "mode": "all"
+        },
+        "thinkingDefault": "medium",
+        "modelPolicy": {
+          "allow": [
+            "koboldcpp/gemma-4-31b-abliterated-q4"
+          ]
+        },
+        "tools": {
+          "profile": "minimal",
+          "exec": {
+            "ask": "always"
+          },
+          "web": {
+            "fetch": {
+              "enabled": false
+            },
+            "search": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "context": {
+        "transport": "streamable-http",
+        "url": "http://context-mcp:3000/mcp",
+        "requestTimeoutMs": 120000
+      }
+    }
+  }
+}

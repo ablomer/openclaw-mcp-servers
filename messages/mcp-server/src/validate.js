@@ -1,4 +1,4 @@
-import { parseEntityId, SOURCES } from '@openclaw-messages/shared';
+import { parseEntityId, resolveDayRange, SOURCES } from '@openclaw-messages/shared';
 
 export function clampInt(value, fallback, min, max) {
   const n = Number(value);
@@ -18,6 +18,10 @@ export function optionalSource(source) {
   if (source == null || source === '') return null;
   if (!SOURCES.includes(source)) throw new Error('invalid source');
   return source;
+}
+
+export function resolveMessageRange(args, { defaultDays = 3, maxDays = 14, nowMs } = {}) {
+  return resolveDayRange(args, { defaultDays, maxDays, nowMs });
 }
 
 export function truncatePayload(value, maxBytes = 32_768) {

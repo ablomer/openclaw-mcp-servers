@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "check": "node --check mcp-server/src/index.js && node --check packages/shared/src/writer.js && node --check workers/whatsapp/src/index.js && node --check workers/instagram/src/index.js && node --check workers/instagram/src/login.js && node --check scripts/backup.mjs && node --check scripts/seed-fixture.mjs"
+    "check": "node --check mcp-server/src/index.js && node --check packages/shared/src/writer.js && node --check packages/shared/src/time.js && node --check workers/whatsapp/src/index.js && node --check workers/whatsapp/src/ingest.js && node --check workers/instagram/src/index.js && node --check workers/instagram/src/login.js && node --check scripts/backup.mjs && node --check scripts/seed-fixture.mjs"
   },
   "engines": {
     "node": ">=20.19.0"

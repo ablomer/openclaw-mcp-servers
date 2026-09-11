@@ -15,7 +15,16 @@ export function truncatePayload(value, maxBytes = 32_768) {
   });
 }
 
+/**
+ * Resolve a calendar selector for gog.
+ * Empty / omitted / the Google alias "primary" become "" so callers can omit
+ * --cal and let gog use the account default. gog matches --cal against
+ * calendar ids and names from `calendar calendars` and does not accept
+ * "primary" as a name.
+ */
 export function calendarId(value) {
-  if (value == null || value === '') return 'primary';
-  return String(value);
+  if (value == null || value === '') return '';
+  const id = String(value);
+  if (id === 'primary') return '';
+  return id;
 }

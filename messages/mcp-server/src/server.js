@@ -42,6 +42,22 @@ export function buildServer(db) {
   );
 
   server.tool(
+    'list_messages',
+    'List archived messages in a calendar-day range, grouped by thread. Dates are YYYY-MM-DD in America/New_York. Read-only.',
+    {
+      from: z.string().min(1).max(128).optional(),
+      to: z.string().min(1).max(128).optional(),
+      days: z.number().int().min(1).max(14).optional(),
+      today: z.boolean().optional(),
+      source: Source.optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      include_empty: z.boolean().optional(),
+    },
+    TOOL_ANNOTATIONS,
+    async (args) => tools.listMessages(args),
+  );
+
+  server.tool(
     'search_messages',
     'Full-text search over archived message bodies. Returns snippets only, never raw_json.',
     {
