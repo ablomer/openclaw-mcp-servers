@@ -15,7 +15,7 @@ const TOOL_ANNOTATIONS = {
 export function buildServer(deps) {
   const tools = createTools(deps);
   const server = new McpServer({
-    name: 'email-readonly',
+    name: 'email',
     version: '1.0.0',
   });
 

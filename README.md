@@ -10,11 +10,11 @@ The servers decide which commands exist, which flags are always on, which fields
 
 | Project | MCP name | What OpenClaw can do | What it cannot do |
 | --- | --- | --- | --- |
-| [`gog/email-mcp`](gog/email-mcp) | `email-readonly` | Search and read Gmail | Send, reply, draft, label, trash |
+| [`gog/email-mcp`](gog/email-mcp) | `email` | Search and read Gmail | Send, reply, draft, label, trash |
 | [`gog/calendar-mcp`](gog/calendar-mcp) | `calendar` | List/search events; create, update, delete events; RSVP | Create or delete calendars, change ACLs, subscribe |
-| [`messages`](messages) | `messages-readonly` | Search a local archive of WhatsApp, Google Messages, and Instagram | Send, reply, react, or write the archive |
+| [`messages`](messages) | `messages` | Search a local archive of WhatsApp, Google Messages, and Instagram | Send, reply, react, or write the archive |
 | [`mood-journal`](mood-journal) | `mood-journal` | Add, edit, search, and summarize journal entries | Set timestamps (the server owns those) |
-| [`google-health`](google-health) | `google-health-readonly` | Read sleep, exercise, and daily activity from the Google Health API | Write health data, GPS, HRV, SpO2, weight, nutrition |
+| [`google-health`](google-health) | `google-health` | Read sleep, exercise, and daily activity from the Google Health API | Write health data, GPS, HRV, SpO2, weight, nutrition |
 
 Email, messages, and Google Health are strictly read-only. Calendar can write events on calendars that already exist. The mood journal is a dedicated write surface with server-owned timestamps, soft deletes, and aggregate tools.
 
@@ -94,7 +94,7 @@ Before OpenClaw can call the servers:
 3. Authenticate `gog` from an MCP container or a one-shot `gogcli` image — never from OpenClaw. Tokens live in `gog-data/keyring`.
 4. Authorize Google Health with `google-health/scripts/auth.mjs` against `google-health-data/` — never from OpenClaw.
 5. Pair workers on a trusted tty (WhatsApp QR, Google Messages cookies, Instagram session). Pairing is not an MCP tool.
-6. Probe: `openclaw mcp probe email-readonly` (and the same for `calendar`, `messages-readonly`, `mood-journal`, `google-health-readonly`).
+6. Probe: `openclaw mcp probe email` (and the same for `calendar`, `messages`, `mood-journal`, `google-health`).
 
 Optional Daylio import for the journal:
 

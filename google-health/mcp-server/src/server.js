@@ -24,7 +24,7 @@ const TOOL_ANNOTATIONS = {
 export function buildServer(deps) {
   const tools = createTools(deps);
   const server = new McpServer({
-    name: 'google-health-readonly',
+    name: 'google-health',
     version: '1.0.0',
   });
 

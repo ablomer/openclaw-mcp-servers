@@ -14,9 +14,6 @@ services:
     restart: unless-stopped
     volumes:
       - ${DATA_DIR}/openclaw/data:/home/node/.openclaw
-      - ${DATA_DIR}/openclaw/vault:/vault
-      - ${DATA_DIR}/openclaw/scripts:/scripts:ro
-      - ${DATA_DIR}/openclaw/edits:/edits
     environment:
       - TZ=America/New_York
     networks:

@@ -13,7 +13,7 @@ const TOOL_ANNOTATIONS = {
 export function buildServer(db) {
   const tools = createTools(db);
   const server = new McpServer({
-    name: 'messages-readonly',
+    name: 'messages',
     version: '1.0.0',
   });
 

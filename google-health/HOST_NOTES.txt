@@ -20,7 +20,7 @@ OpenClaw host merge (do this on the production machine, never commit live config
 
 3. Merge google-health/openclaw.google-health.snippet.json into
    ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
-   - mcp.servers.google-health-readonly -> http://google-health-mcp:3000/mcp
+   - mcp.servers.google-health -> http://google-health-mcp:3000/mcp
    - optional agents.entries.google-health
      (local koboldcpp only; web/exec locked down)
 
@@ -40,6 +40,6 @@ OpenClaw host merge (do this on the production machine, never commit live config
 6. Cloud models will exfiltrate any MCP tool result. Query sleep and
    exercise through a local-only agent when possible.
 
-7. google-health-readonly is sleep, exercise, and daily activity rollups
+7. google-health is sleep, exercise, and daily activity rollups
    only. It cannot write health data, request location, or read HRV / SpO2 /
    weight / nutrition. Mood-journal sleep fields stay independent.

@@ -24,7 +24,7 @@ OpenClaw host merge (do this on the production machine, never commit live config
 
 2. Merge gog/openclaw.gog.snippet.json into
    ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
-   - mcp.servers.email-readonly -> http://email-mcp:3000/mcp
+   - mcp.servers.email -> http://email-mcp:3000/mcp
    - mcp.servers.calendar -> http://calendar-mcp:3000/mcp
    - optional agents.entries.email / agents.entries.calendar
      (local koboldcpp only; web/exec locked down)
@@ -40,6 +40,6 @@ OpenClaw host merge (do this on the production machine, never commit live config
 4. Cloud models (Gemini/OpenRouter) will exfiltrate any MCP tool result.
    Query personal mail and calendar through a local-only agent when possible.
 
-5. email-readonly is Gmail search/read only (gog --readonly --gmail-no-send).
+5. email is Gmail search/read only (gog --readonly --gmail-no-send).
    calendar can create/update/delete events on existing calendars only.
    Neither server can send mail or create/delete calendars.

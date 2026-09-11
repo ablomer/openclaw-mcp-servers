@@ -57,7 +57,7 @@
   },
   "mcp": {
     "servers": {
-      "email-readonly": {
+      "email": {
         "transport": "streamable-http",
         "url": "http://email-mcp:3000/mcp"
       },

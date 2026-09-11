@@ -137,11 +137,11 @@ echo "Merge messages/openclaw.messages.snippet.json into ${DATA_DIR}/openclaw/da
 echo "Merge mood-journal/openclaw.mood-journal.snippet.json into ${DATA_DIR}/openclaw/data (openclaw.json)."
 echo "Merge gog/openclaw.gog.snippet.json into ${DATA_DIR}/openclaw/data (openclaw.json)."
 echo "Merge google-health/openclaw.google-health.snippet.json into ${DATA_DIR}/openclaw/data (openclaw.json)."
-echo "Then: docker exec <openclaw> openclaw mcp probe messages-readonly"
+echo "Then: docker exec <openclaw> openclaw mcp probe messages"
 echo "Then: docker exec <openclaw> openclaw mcp probe mood-journal"
-echo "Then: docker exec <openclaw> openclaw mcp probe email-readonly"
+echo "Then: docker exec <openclaw> openclaw mcp probe email"
 echo "Then: docker exec <openclaw> openclaw mcp probe calendar"
-echo "Then: docker exec <openclaw> openclaw mcp probe google-health-readonly"
+echo "Then: docker exec <openclaw> openclaw mcp probe google-health"
 EOF
 
 echo "Deployed to ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}"

@@ -4,11 +4,11 @@ This repo exposes **five** MCP servers over Streamable HTTP. OpenClaw reaches th
 
 | Server | MCP name | Container | URL | Mode |
 | --- | --- | --- | --- | --- |
-| Gmail | `email-readonly` | `email-mcp` | `http://email-mcp:3000/mcp` | Read-only search/read. Cannot send mail. |
+| Gmail | `email` | `email-mcp` | `http://email-mcp:3000/mcp` | Read-only search/read. Cannot send mail. |
 | Calendar | `calendar` | `calendar-mcp` | `http://calendar-mcp:3000/mcp` | Read plus create/update/delete events. Cannot create or delete calendars. |
-| Messages | `messages-readonly` | `messages-mcp` | `http://messages-mcp:3000/mcp` | Read-only archive of WhatsApp, Google Messages, and Instagram. Cannot send. |
+| Messages | `messages` | `messages-mcp` | `http://messages-mcp:3000/mcp` | Read-only archive of WhatsApp, Google Messages, and Instagram. Cannot send. |
 | Mood journal | `mood-journal` | `mood-journal-mcp` | `http://mood-journal-mcp:3000/mcp` | Read/write personal journal. Server owns timestamps. |
-| Google Health | `google-health-readonly` | `google-health-mcp` | `http://google-health-mcp:3000/mcp` | Read-only sleep, exercise, and daily activity. Cannot write health data. |
+| Google Health | `google-health` | `google-health-mcp` | `http://google-health-mcp:3000/mcp` | Read-only sleep, exercise, and daily activity. Cannot write health data. |
 
 Transport in OpenClaw config is `streamable-http`. Each process also serves `GET /healthz` on the same port.
 
@@ -49,7 +49,7 @@ From OpenClaw, use the configured MCP server name and the tool name below. Argum
 
 ---
 
-## 1. Email (`email-readonly`)
+## 1. Email (`email`)
 
 Read-only Gmail via `gog`. Every invocation includes `--readonly` and `--gmail-no-send`. `get_message` and `get_thread` also pass `--sanitize-content` as a command flag (not a global `gog` flag). Allowed `gog` commands: `gmail.search`, `gmail.get`, `gmail.thread.get`, `gmail.labels.list`.
 
@@ -354,7 +354,7 @@ Create/delete calendars, ACL changes, subscribe/unsubscribe.
 
 ---
 
-## 3. Messages (`messages-readonly`)
+## 3. Messages (`messages`)
 
 Read-only SQLite archive filled by WhatsApp, Google Messages, and Instagram workers. The MCP process mounts the DB **read-only** and never sends.
 
@@ -772,7 +772,7 @@ Known tags with usage counts (non-deleted entries only). No arguments.
 
 ---
 
-## 5. Google Health (`google-health-readonly`)
+## 5. Google Health (`google-health`)
 
 Read-only [Google Health API](https://developers.google.com/health/about) proxy. Sleep and exercise use `dataPoints:reconcile` so overlapping device logs merge. Daily activity uses `dailyRollUp`. GPS / location fields are stripped. Mood-journal sleep fields stay independent (self-reported vs device).
 
@@ -908,11 +908,11 @@ Missing metrics are `null`. Data appears after the Fitbit / Google Health app sy
 
 | Server | Tools |
 | --- | --- |
-| `email-readonly` | `search_messages`, `get_message`, `get_thread`, `list_labels` |
+| `email` | `search_messages`, `get_message`, `get_thread`, `list_labels` |
 | `calendar` | `list_calendars`, `list_events`, `get_event`, `search_events`, `create_event`, `update_event`, `delete_event`, `find_conflicts`, `get_freebusy`, `respond_event` |
-| `messages-readonly` | `list_recent_conversations`, `get_thread_history`, `search_messages` |
+| `messages` | `list_recent_conversations`, `get_thread_history`, `search_messages` |
 | `mood-journal` | `add_entry`, `update_entry`, `delete_entry`, `get_entry`, `list_entries`, `search_entries`, `summarize_range`, `mood_by_period`, `compare_tagged`, `list_tags` |
-| `google-health-readonly` | `list_sleep`, `get_sleep`, `list_exercises`, `get_exercise`, `summarize_activity` |
+| `google-health` | `list_sleep`, `get_sleep`, `list_exercises`, `get_exercise`, `summarize_activity` |
 
 `search_messages` exists on both email and messages. They are different tools on different servers (Gmail query vs local FTS).
 

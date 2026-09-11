@@ -8,7 +8,7 @@ OpenClaw host merge (do this on the production machine, never commit live config
 3. Merge messages/openclaw.messages.snippet.json into
    ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
    - agents.entries.messages  (local koboldcpp only; web/exec locked down)
-   - mcp.servers.messages-readonly -> http://messages-mcp:3000/mcp
+   - mcp.servers.messages -> http://messages-mcp:3000/mcp
 
 4. Attach the openclaw service to the messages-internal Docker network
    (already patched in the repo-root docker-compose.yml). Recreate the

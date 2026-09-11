@@ -46,5 +46,5 @@ app.all('/mcp', async (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  logEvent('mcp', 'listen', { host: HOST, port: PORT, name: 'email-readonly' });
+  logEvent('mcp', 'listen', { host: HOST, port: PORT, name: 'email' });
 });

@@ -31,7 +31,7 @@
   },
   "mcp": {
     "servers": {
-      "google-health-readonly": {
+      "google-health": {
         "transport": "streamable-http",
         "url": "http://google-health-mcp:3000/mcp"
       }
