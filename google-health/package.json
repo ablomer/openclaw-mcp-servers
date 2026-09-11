@@ -1,0 +1,16 @@
+{
+  "name": "openclaw-google-health",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "mcp-server"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "check": "node --check packages/shared/src/index.js && node --check packages/shared/src/log.js && node --check packages/shared/src/time.js && node --check packages/shared/src/auth.js && node --check packages/shared/src/client.js && node --check mcp-server/src/index.js && node --check mcp-server/src/server.js && node --check mcp-server/src/tools.js && node --check mcp-server/src/validate.js && node --check mcp-server/src/format.js && node --check scripts/auth.mjs"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

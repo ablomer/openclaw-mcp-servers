@@ -1,0 +1,45 @@
+OpenClaw host merge (do this on the production machine, never commit live config)
+
+1. Create a Google Cloud project, enable the Google Health API, and create
+   an OAuth client (Desktop or Web). Add your Google account as a test user.
+   Request only:
+     https://www.googleapis.com/auth/googlehealth.sleep.readonly
+     https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly
+   Authorized redirect URI can be https://www.google.com (paste-the-code flow).
+
+   Publish the OAuth consent screen to "In production" even though the app
+   stays unverified and single-user. Testing-mode refresh tokens expire after
+   7 days. No CASA review is needed under the 100-user cap.
+
+2. Copy credentials.json to ${DATA_DIR}/openclaw/google-health-data/ and
+   authorize from a trusted machine — never from OpenClaw:
+     GOOGLE_HEALTH_DATA_DIR=${DATA_DIR}/openclaw/google-health-data \
+       node google-health/scripts/auth.mjs
+   Then re-run google-health/scripts/init-volumes.sh so uid 65532 can refresh
+   token.json. Do not put the client secret or tokens in .env or compose.
+
+3. Merge google-health/openclaw.google-health.snippet.json into
+   ${DATA_DIR}/openclaw/data (the OpenClaw config volume):
+   - mcp.servers.google-health-readonly -> http://google-health-mcp:3000/mcp
+   - optional agents.entries.google-health
+     (local koboldcpp only; web/exec locked down)
+
+4. Attach the openclaw service to the google-health-internal Docker network
+   (already patched in the repo-root docker-compose.yml). Recreate the
+   openclaw container after:
+     docker network create --internal google-health-internal
+     docker network create google-health-egress
+
+   OpenClaw must join google-health-internal only — never google-health-egress.
+   OpenClaw must NEVER mount google-health-data.
+
+5. Data comes from Fitbit, Pixel Watch, MobileTrack, or manual logs in the
+   Google Health app after that app syncs (often ~15 minutes). Phone-only
+   Google Fit / Health Connect history is not available here.
+
+6. Cloud models will exfiltrate any MCP tool result. Query sleep and
+   exercise through a local-only agent when possible.
+
+7. google-health-readonly is sleep, exercise, and daily activity rollups
+   only. It cannot write health data, request location, or read HRV / SpO2 /
+   weight / nutrition. Mood-journal sleep fields stay independent.

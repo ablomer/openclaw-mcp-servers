@@ -1,0 +1,52 @@
+# Google Health MCP. Included from the repo-root OpenClaw compose.
+# No published ports. No Traefik labels.
+# Networks are created by deploy.sh:
+#   docker network create --internal google-health-internal
+#   docker network create google-health-egress
+#
+# OpenClaw (root docker-compose.yml) attaches to google-health-internal only.
+# Host layout:
+#   ${DATA_DIR}/openclaw/google-health-data/credentials.json
+#   ${DATA_DIR}/openclaw/google-health-data/token.json
+# Mounted at /data. OpenClaw must NEVER mount this volume.
+
+services:
+  google-health-mcp:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - ${DATA_DIR}/openclaw/google-health-data:/data
+    environment:
+      GOOGLE_HEALTH_DATA_DIR: /data
+      PORT: "3000"
+      HOST: 0.0.0.0
+      TZ: America/New_York
+    networks:
+      - google-health-internal
+      - google-health-egress
+    pids_limit: 256
+    mem_limit: 256m
+    cpus: "0.50"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  google-health-internal:
+    external: true
+    name: google-health-internal
+  google-health-egress:
+    external: true
+    name: google-health-egress

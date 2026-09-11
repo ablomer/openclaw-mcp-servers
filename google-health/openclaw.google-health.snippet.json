@@ -1,0 +1,40 @@
+{
+  "agents": {
+    "entries": {
+      "google-health": {
+        "model": "koboldcpp/gemma-4-31b-abliterated-q4",
+        "sandbox": {
+          "mode": "all"
+        },
+        "thinkingDefault": "medium",
+        "modelPolicy": {
+          "allow": [
+            "koboldcpp/gemma-4-31b-abliterated-q4"
+          ]
+        },
+        "tools": {
+          "profile": "minimal",
+          "exec": {
+            "ask": "always"
+          },
+          "web": {
+            "fetch": {
+              "enabled": false
+            },
+            "search": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "google-health-readonly": {
+        "transport": "streamable-http",
+        "url": "http://google-health-mcp:3000/mcp"
+      }
+    }
+  }
+}

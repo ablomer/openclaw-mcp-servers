@@ -6,6 +6,7 @@ include:
   - path: ./messages/docker-compose.yml
   - path: ./mood-journal/docker-compose.yml
   - path: ./gog/docker-compose.yml
+  - path: ./google-health/docker-compose.yml
 
 services:
   openclaw:
@@ -13,7 +14,7 @@ services:
     restart: unless-stopped
     volumes:
       - ${DATA_DIR}/openclaw/data:/home/node/.openclaw
-      - ${DATA_DIR}/openclaw/vault:/vault:ro
+      - ${DATA_DIR}/openclaw/vault:/vault
       - ${DATA_DIR}/openclaw/scripts:/scripts:ro
       - ${DATA_DIR}/openclaw/edits:/edits
     environment:
@@ -23,6 +24,7 @@ services:
       - messages-internal
       - mood-journal-internal
       - gog-internal
+      - google-health-internal
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.clawd.entrypoints=http"
@@ -48,3 +50,6 @@ networks:
   gog-internal:
     external: true
     name: gog-internal
+  google-health-internal:
+    external: true
+    name: google-health-internal

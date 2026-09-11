@@ -1,6 +1,6 @@
 # OpenClaw MCP Server Guide
 
-This repo exposes **four** MCP servers over Streamable HTTP. OpenClaw reaches them on the internal Docker networks; they are not published on the host and have no Traefik routes.
+This repo exposes **five** MCP servers over Streamable HTTP. OpenClaw reaches them on the internal Docker networks; they are not published on the host and have no Traefik routes.
 
 | Server | MCP name | Container | URL | Mode |
 | --- | --- | --- | --- | --- |
@@ -8,6 +8,7 @@ This repo exposes **four** MCP servers over Streamable HTTP. OpenClaw reaches th
 | Calendar | `calendar` | `calendar-mcp` | `http://calendar-mcp:3000/mcp` | Read plus create/update/delete events. Cannot create or delete calendars. |
 | Messages | `messages-readonly` | `messages-mcp` | `http://messages-mcp:3000/mcp` | Read-only archive of WhatsApp, Google Messages, and Instagram. Cannot send. |
 | Mood journal | `mood-journal` | `mood-journal-mcp` | `http://mood-journal-mcp:3000/mcp` | Read/write personal journal. Server owns timestamps. |
+| Google Health | `google-health-readonly` | `google-health-mcp` | `http://google-health-mcp:3000/mcp` | Read-only sleep, exercise, and daily activity. Cannot write health data. |
 
 Transport in OpenClaw config is `streamable-http`. Each process also serves `GET /healthz` on the same port.
 
@@ -40,7 +41,7 @@ If the JSON payload exceeds **32 KiB**, the server replaces it with:
 }
 ```
 
-Email and calendar wrap the `gog` CLI (`--json`). A `gog` timeout (30s) or output over 100 KiB becomes an error result.
+Email and calendar wrap the `gog` CLI (`--json`). A `gog` timeout (30s) or output over 100 KiB becomes an error result. Google Health calls `health.googleapis.com` with a 30s timeout; sleep/exercise lists stop at 50 sessions.
 
 ### How to call a tool
 
@@ -771,6 +772,138 @@ Known tags with usage counts (non-deleted entries only). No arguments.
 
 ---
 
+## 5. Google Health (`google-health-readonly`)
+
+Read-only [Google Health API](https://developers.google.com/health/about) proxy. Sleep and exercise use `dataPoints:reconcile` so overlapping device logs merge. Daily activity uses `dailyRollUp`. GPS / location fields are stripped. Mood-journal sleep fields stay independent (self-reported vs device).
+
+- **Health:** `{ "ok": true, "auth": true }` when `token.json` exists. Does not call Google.
+- **Auth:** `${DATA_DIR}/openclaw/google-health-data/{credentials.json,token.json}` mounted at `/data`. Run `scripts/auth.mjs` outside OpenClaw.
+- **Scopes:** `googlehealth.sleep.readonly` and `googlehealth.activity_and_fitness.readonly` only.
+- **Dates:** `America/New_York`. `from` / `to` are `YYYY-MM-DD` (or `YYYY-MM-DDTHH:mm` / a `display_*` value). Date-only `to` is inclusive of that day. Default window is the last 7 days including today. Max 90 days for sleep/exercise, 14 days for `summarize_activity`.
+- **Ids:** short data-point ids from list results, or the full `users/me/dataTypes/…/dataPoints/…` name.
+
+Shared range arguments for `list_sleep`, `list_exercises`, and `summarize_activity`:
+
+| Argument | Type | Required | Constraints | Default |
+| --- | --- | --- | --- | --- |
+| `from` | string | no | date | start of the default window |
+| `to` | string | no | date | end of today |
+| `days` | integer | no | 1–90 (1–14 for activity) | `7` when no `from`/`to`/`today`/`week` |
+| `today` | boolean | no | not with `week` | false |
+| `week` | boolean | no | ISO week (Monday start) through today | false |
+
+### `list_sleep`
+
+Reconciled sleep sessions whose wake time falls in the window. At most 50 sessions.
+
+```json
+{ "from": "2026-09-01", "to": "2026-09-07" }
+```
+
+```json
+{ "days": 14 }
+```
+
+**Returns**
+
+```json
+{
+  "sessions": [
+    {
+      "id": "s1",
+      "display_start": "Tuesday, 2026-09-08 10:30:00 PM EDT",
+      "display_end": "Wednesday, 2026-09-09 6:30:00 AM EDT",
+      "duration_hours": 8,
+      "type": "STAGES",
+      "stage_minutes": { "light": 240, "deep": 90, "rem": 120, "awake": 30 },
+      "short_awakening_count": 2
+    }
+  ],
+  "truncated": false
+}
+```
+
+`truncated: true` means more than 50 sessions matched. Raw stage samples and short-awakening intervals are omitted.
+
+### `get_sleep`
+
+One sleep session, including stage intervals. Raw `shortAwakenings` are omitted.
+
+| Argument | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `id` | string | yes | 1–512 characters |
+
+```json
+{ "id": "s1" }
+```
+
+**Returns:** `{ "session": { …list fields, "stages": [{ "display_start", "display_end", "type", "minutes" }] } }`
+
+### `list_exercises`
+
+Reconciled exercise sessions whose start time falls in the window. At most 50 sessions. No GPS.
+
+```json
+{ "today": true }
+```
+
+**Returns**
+
+```json
+{
+  "sessions": [
+    {
+      "id": "e1",
+      "activity_type": "RUNNING",
+      "display_start": "Wednesday, 2026-09-09 10:00:00 AM EDT",
+      "display_end": "Wednesday, 2026-09-09 11:00:00 AM EDT",
+      "duration_min": 60,
+      "calories": 480,
+      "distance_m": 8500,
+      "steps": 7200,
+      "avg_hr": 148
+    }
+  ],
+  "truncated": false
+}
+```
+
+### `get_exercise`
+
+One exercise session. Laps/events may be included after location fields are stripped.
+
+| Argument | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `id` | string | yes | 1–512 characters |
+
+```json
+{ "id": "e1" }
+```
+
+**Returns:** `{ "session": { …list fields, "events"?, "laps"? } }`
+
+### `summarize_activity`
+
+Per-day steps, active minutes, and total calories. Maximum 14 days.
+
+```json
+{ "from": "2026-09-01", "to": "2026-09-07" }
+```
+
+**Returns**
+
+```json
+{
+  "days": [
+    { "date": "2026-09-01", "steps": 8000, "active_minutes": 45, "calories": 2200 }
+  ]
+}
+```
+
+Missing metrics are `null`. Data appears after the Fitbit / Google Health app syncs (often ~15 minutes). Phone-only Google Fit / Health Connect history is not available.
+
+---
+
 ## Quick reference
 
 | Server | Tools |
@@ -779,6 +912,7 @@ Known tags with usage counts (non-deleted entries only). No arguments.
 | `calendar` | `list_calendars`, `list_events`, `get_event`, `search_events`, `create_event`, `update_event`, `delete_event`, `find_conflicts`, `get_freebusy`, `respond_event` |
 | `messages-readonly` | `list_recent_conversations`, `get_thread_history`, `search_messages` |
 | `mood-journal` | `add_entry`, `update_entry`, `delete_entry`, `get_entry`, `list_entries`, `search_entries`, `summarize_range`, `mood_by_period`, `compare_tagged`, `list_tags` |
+| `google-health-readonly` | `list_sleep`, `get_sleep`, `list_exercises`, `get_exercise`, `summarize_activity` |
 
 `search_messages` exists on both email and messages. They are different tools on different servers (Gmail query vs local FTS).
 
@@ -786,14 +920,15 @@ Known tags with usage counts (non-deleted entries only). No arguments.
 
 ## Capability boundaries
 
-| Action | email | calendar | messages | mood-journal |
-| --- | --- | --- | --- | --- |
-| Read personal data | yes | yes | yes | yes |
-| Send mail / messages | no | — | no | — |
-| Create/update/delete events | — | yes | — | — |
-| Create/delete calendars | — | no | — | — |
-| Write journal entries | — | — | — | yes |
+| Action | email | calendar | messages | mood-journal | google-health |
+| --- | --- | --- | --- | --- | --- |
+| Read personal data | yes | yes | yes | yes | yes |
+| Send mail / messages | no | — | no | — | — |
+| Create/update/delete events | — | yes | — | — | — |
+| Create/delete calendars | — | no | — | — | — |
+| Write journal entries | — | — | — | yes | — |
+| Write health data | — | — | — | — | no |
 
-Cloud models will see any tool result you send them. Prefer the local-only agents in each project’s `openclaw.*.snippet.json` for mail, calendar, messages, and journal.
+Cloud models will see any tool result you send them. Prefer the local-only agents in each project’s `openclaw.*.snippet.json` for mail, calendar, messages, journal, and health data.
 
-Host merge (networks, OpenClaw `mcp.servers` URLs, gog keyring) is documented in each project’s `HOST_NOTES.txt`, not here.
+Host merge (networks, OpenClaw `mcp.servers` URLs, gog keyring, Google Health tokens) is documented in each project’s `HOST_NOTES.txt`, not here.

@@ -1,10 +1,10 @@
 # OpenClaw MCP servers
 
-Custom [MCP](https://modelcontextprotocol.io) servers that sit between [OpenClaw](https://github.com/openclaw/openclaw) and my mail, calendar, messages, and journal.
+Custom [MCP](https://modelcontextprotocol.io) servers that sit between [OpenClaw](https://github.com/openclaw/openclaw) and my mail, calendar, messages, journal, and health data.
 
 OpenClaw already ships MCP, skills, and tools that can reach many of these systems. The point of this repo is not to reinvent that. It is to **keep OpenClaw read-only** (or tightly scoped) and to **reshape the data** so the agent sees what I actually need — not a send-capable plugin, a raw CLI, or an unbounded dump of personal history.
 
-The servers decide which commands exist, which flags are always on, which fields come back, and how large a payload can be. OpenClaw talks to them over Streamable HTTP on internal Docker networks. It never gets the `gog` binary, Gmail tokens, chat sessions, or the live SQLite files.
+The servers decide which commands exist, which flags are always on, which fields come back, and how large a payload can be. OpenClaw talks to them over Streamable HTTP on internal Docker networks. It never gets the `gog` binary, Gmail tokens, Google Health tokens, chat sessions, or the live SQLite files.
 
 ## What is in here
 
@@ -14,8 +14,9 @@ The servers decide which commands exist, which flags are always on, which fields
 | [`gog/calendar-mcp`](gog/calendar-mcp) | `calendar` | List/search events; create, update, delete events; RSVP | Create or delete calendars, change ACLs, subscribe |
 | [`messages`](messages) | `messages-readonly` | Search a local archive of WhatsApp, Google Messages, and Instagram | Send, reply, react, or write the archive |
 | [`mood-journal`](mood-journal) | `mood-journal` | Add, edit, search, and summarize journal entries | Set timestamps (the server owns those) |
+| [`google-health`](google-health) | `google-health-readonly` | Read sleep, exercise, and daily activity from the Google Health API | Write health data, GPS, HRV, SpO2, weight, nutrition |
 
-Email and messages are strictly read-only. Calendar can write events on calendars that already exist. The mood journal is a dedicated write surface with server-owned timestamps, soft deletes, and aggregate tools.
+Email, messages, and Google Health are strictly read-only. Calendar can write events on calendars that already exist. The mood journal is a dedicated write surface with server-owned timestamps, soft deletes, and aggregate tools.
 
 Full tool schemas, examples, and capability boundaries live in [`MCP_GUIDE.md`](MCP_GUIDE.md).
 
@@ -27,6 +28,7 @@ The interesting work is not “expose Gmail.” It is deciding what the model is
 - **Calendar** can mutate events, but calendar admin commands are disabled at the `gog` allow-list.
 - **Messages** are ingested by workers into SQLite. The MCP process mounts that database **read-only**. Search returns snippets, not full bodies or `raw_json`.
 - **Mood journal** never accepts a client timestamp. List/search/aggregates hide deleted rows and raw epoch fields; callers only see `display_recorded_at`.
+- **Google Health** live-proxies the Health API with only sleep and activity read scopes. List tools return session summaries; GPS and location are stripped; sleep/exercise lists stop at 50 sessions.
 - **Every server** returns JSON text. Payloads over 32 KiB are replaced with a truncation stub so a tool call cannot dump an entire mailbox or chat history into context.
 
 That is the “tweak the data” part: same sources OpenClaw could already reach, but with a narrower, more useful surface.
@@ -35,10 +37,11 @@ That is the “tweak the data” part: same sources OpenClaw could already reach
 
 ```
 .
-├── docker-compose.yml          # OpenClaw + includes the three projects
+├── docker-compose.yml          # OpenClaw + includes the project compose files
 ├── deploy.sh                   # test, rsync, create networks, build images
 ├── MCP_GUIDE.md                # tool reference
 ├── gog/                        # Gmail + Calendar MCP (wraps gog CLI)
+├── google-health/              # Fitbit / Pixel Watch sleep and exercise (Health API)
 ├── messages/                   # ingest workers + read-only MCP
 └── mood-journal/               # writable journal MCP + Daylio import
 ```
@@ -52,12 +55,12 @@ Each project has its own compose file, tests, and an `openclaw.*.snippet.json` t
                     │    OpenClaw     │  joins *-internal only
                     └────────┬────────┘
          streamable-http     │
-    ┌────────────┬───────────┼────────────┐
-    ▼            ▼           ▼            ▼
- email-mcp   calendar-mcp  messages-mcp  mood-journal-mcp
- (gog, RO)   (gog, events) (SQLite RO)   (SQLite RW)
-    │            │           ▲
-    └──── gog ───┘           │ ingest only
+    ┌────────────┬───────────┼────────────┬─────────────────┐
+    ▼            ▼           ▼            ▼                 ▼
+ email-mcp   calendar-mcp  messages-mcp  mood-journal-mcp  google-health-mcp
+ (gog, RO)   (gog, events) (SQLite RO)   (SQLite RW)       (Health API, RO)
+    │            │           ▲                                  │
+    └──── gog ───┘           │ ingest only                      └── health.googleapis.com
                        whatsapp / gmessages / instagram workers
 ```
 
@@ -66,10 +69,10 @@ MCP processes listen on `0.0.0.0:3000` inside the container (`/mcp` and `GET /he
 Networks are split on purpose:
 
 - `*-internal` — OpenClaw can reach MCP HTTP here. No egress.
-- `*-egress` — workers and `gog` use this to talk to Google / WhatsApp / Instagram. OpenClaw must not join egress networks.
+- `*-egress` — workers, `gog`, and google-health-mcp use this to talk to Google / WhatsApp / Instagram. OpenClaw must not join egress networks.
 - Backup sidecars use `network_mode: none`.
 
-Containers run read-only root filesystems, drop capabilities, and cap CPU/memory. OpenClaw’s vault and scripts mounts are read-only; the message and journal databases are never mounted into OpenClaw.
+Containers run read-only root filesystems, drop capabilities, and cap CPU/memory. OpenClaw’s vault and scripts mounts are read-only; the message and journal databases and Google Health token volume are never mounted into OpenClaw.
 
 ## Run
 
@@ -87,10 +90,11 @@ docker compose up -d
 Before OpenClaw can call the servers:
 
 1. Merge the `openclaw.*.snippet.json` files into the OpenClaw config volume.
-2. Attach the OpenClaw service to `messages-internal`, `mood-journal-internal`, and `gog-internal` only.
+2. Attach the OpenClaw service to `messages-internal`, `mood-journal-internal`, `gog-internal`, and `google-health-internal` only.
 3. Authenticate `gog` from an MCP container or a one-shot `gogcli` image — never from OpenClaw. Tokens live in `gog-data/keyring`.
-4. Pair workers on a trusted tty (WhatsApp QR, Google Messages cookies, Instagram session). Pairing is not an MCP tool.
-5. Probe: `openclaw mcp probe email-readonly` (and the same for `calendar`, `messages-readonly`, `mood-journal`).
+4. Authorize Google Health with `google-health/scripts/auth.mjs` against `google-health-data/` — never from OpenClaw.
+5. Pair workers on a trusted tty (WhatsApp QR, Google Messages cookies, Instagram session). Pairing is not an MCP tool.
+6. Probe: `openclaw mcp probe email-readonly` (and the same for `calendar`, `messages-readonly`, `mood-journal`, `google-health-readonly`).
 
 Optional Daylio import for the journal:
 
@@ -98,7 +102,7 @@ Optional Daylio import for the journal:
 node mood-journal/scripts/import-daylio.mjs path/to/daylio.csv
 ```
 
-Disable OpenClaw’s native WhatsApp send channel if you use the messages stack. Do not mount `gog` or `gog-data` into the OpenClaw container.
+Disable OpenClaw’s native WhatsApp send channel if you use the messages stack. Do not mount `gog`, `gog-data`, or `google-health-data` into the OpenClaw container.
 
 ## Tests
 
@@ -107,13 +111,14 @@ Disable OpenClaw’s native WhatsApp send channel if you use the messages stack.
 ( cd messages/workers/gmessages && go test ./... )
 ( cd mood-journal && npm run check && npm test )
 ( cd gog && npm run check && npm test )
+( cd google-health && npm run check && npm test )
 ```
 
 ## Privacy
 
-Cloud models see whatever a tool returns. Query mail, messages, and the journal through a **local-only** agent when you can. The snippets pin those agents to a local model, a minimal tool profile, and no web fetch/search.
+Cloud models see whatever a tool returns. Query mail, messages, the journal, and health data through a **local-only** agent when you can. The snippets pin those agents to a local model, a minimal tool profile, and no web fetch/search.
 
-Do not commit `openclaw.json`, `.env`, `*.sqlite`, or anything under `sessions/`. Those are in `.gitignore` for a reason.
+Do not commit `openclaw.json`, `.env`, `*.sqlite`, `credentials.json`, `token.json`, or anything under `sessions/`. Those are in `.gitignore` for a reason.
 
 Set `GOG_KEYRING_PASSWORD` (and any other secrets) via the environment on the host. Do not put live tokens, cookies, or keyring passwords in compose files you intend to publish.
 
