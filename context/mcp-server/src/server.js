@@ -16,7 +16,7 @@ export function buildServer(deps) {
 
   server.tool(
     'generate_context',
-    'Assemble a JSON dump of memories, recent messages, upcoming calendar events, and inbox email. Read-only; calls the messages, calendar, and email MCP servers.',
+    'Assemble a JSON dump of recent messages, upcoming calendar events, and inbox email from the messages, calendar, and email MCP servers. Read-only; does not read OpenClaw workspace files.',
     {},
     TOOL_ANNOTATIONS,
     async () => tools.generateContext(),

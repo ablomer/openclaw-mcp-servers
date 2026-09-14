@@ -15,7 +15,7 @@ The servers decide which commands exist, which flags are always on, which fields
 | [`messages`](messages) | `messages` | Search a local archive of WhatsApp, Google Messages, and Instagram | Send, reply, react, or write the archive |
 | [`mood-journal`](mood-journal) | `mood-journal` | Add, edit, search, and summarize journal entries | Set timestamps (the server owns those) |
 | [`google-health`](google-health) | `google-health` | Read sleep, exercise, and daily activity from the Google Health API | Write health data, GPS, HRV, SpO2, weight, nutrition |
-| [`context`](context) | `context` | Generate a JSON dump of memories, recent messages, upcoming events, and inbox email | Write anything; call tools other than `generate_context` |
+| [`context`](context) | `context` | Generate a JSON dump of recent messages, upcoming events, and inbox email | Write anything; call tools other than `generate_context`; read OpenClaw workspace files |
 
 Email, messages, Google Health, and context are strictly read-only. Calendar can write events on calendars that already exist. The mood journal is a dedicated write surface with server-owned timestamps, soft deletes, and aggregate tools.
 
@@ -30,7 +30,7 @@ The interesting work is not “expose Gmail.” It is deciding what the model is
 - **Messages** are ingested by workers into SQLite. The MCP process mounts that database **read-only**. Search returns snippets, not full bodies or `raw_json`.
 - **Mood journal** never accepts a client timestamp. List/search/aggregates hide deleted rows and raw epoch fields; callers only see `display_recorded_at`.
 - **Google Health** live-proxies the Health API with only sleep and activity read scopes. List tools return session summaries; GPS and location are stripped; sleep/exercise lists stop at 50 sessions.
-- **Context** calls the messages, calendar, and email MCP servers and reads `MEMORY.md` plus recent daily logs. One tool returns the combined JSON.
+- **Context** calls the messages, calendar, and email MCP servers only. One tool returns the combined JSON. It does not read `MEMORY.md` or daily logs.
 - **Every server** returns JSON text. Payloads over 32 KiB (256 KiB for context) are replaced with a truncation stub so a tool call cannot dump an unbounded mailbox or chat history into context.
 
 That is the “tweak the data” part: same sources OpenClaw could already reach, but with a narrower, more useful surface.
@@ -46,7 +46,7 @@ That is the “tweak the data” part: same sources OpenClaw could already reach
 ├── google-health/              # Fitbit / Pixel Watch sleep and exercise (Health API)
 ├── messages/                   # ingest workers + read-only MCP
 ├── mood-journal/               # writable journal MCP + Daylio import
-└── context/                    # aggregated memories + mail/calendar/messages dump
+└── context/                    # aggregated mail/calendar/messages dump
 ```
 
 Each project has its own compose file, tests, and an `openclaw.*.snippet.json` to merge into OpenClaw config. Host-specific merge steps are in each project’s `HOST_NOTES.txt`.
@@ -67,8 +67,7 @@ Each project has its own compose file, tests, and an `openclaw.*.snippet.json` t
                        whatsapp / gmessages / instagram workers
 
  OpenClaw ──► context-mcp (aggregate, read-only)
-                 ├── messages-mcp / calendar-mcp / email-mcp
-                 └── MEMORY.md / daily logs (workspace, read-only)
+                 └── messages-mcp / calendar-mcp / email-mcp
 ```
 
 MCP processes listen on `0.0.0.0:3000` inside the container (`/mcp` and `GET /healthz`). They are not published on the host and have no Traefik routes. DNS-rebinding protection is on.

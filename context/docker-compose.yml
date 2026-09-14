@@ -5,8 +5,7 @@
 #
 # Joins messages-internal and gog-internal so it can call those MCP servers.
 # OpenClaw (root docker-compose.yml) attaches to context-internal only.
-# Workspace is OpenClaw's, mounted read-only. uid 1000 matches the OpenClaw
-# node user so MEMORY.md and daily logs are readable.
+# Does not mount the OpenClaw workspace.
 
 services:
   context-mcp:
@@ -15,17 +14,14 @@ services:
       dockerfile: mcp-server/Dockerfile
     restart: unless-stopped
     read_only: true
-    user: "1000:1000"
+    user: "65532:65532"
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=32m,mode=1777
-    volumes:
-      - ${DATA_DIR}/openclaw/data/workspace:/workspace:ro
     environment:
-      WORKSPACE_DIR: /workspace
       MESSAGES_MCP_URL: http://messages-mcp:3000/mcp
       CALENDAR_MCP_URL: http://calendar-mcp:3000/mcp
       EMAIL_MCP_URL: http://email-mcp:3000/mcp

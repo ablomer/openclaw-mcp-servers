@@ -1,16 +1,4 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { callMcpTool } from './mcp-client.js';
-
-function getLocalYYYYMMDD(now, daysAgo = 0) {
-  const d = new Date(now.getTime());
-  d.setDate(d.getDate() - daysAgo);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function looksLikeAddress(value) {
   return /@(?:lid|g\.us|s\.whatsapp\.net|broadcast|newsletter)$/i.test(String(value || ''));
@@ -169,50 +157,14 @@ export async function mapPool(items, concurrency, fn) {
 }
 
 export function createGenerator(options = {}) {
-  const workspaceDir =
-    options.workspaceDir ||
-    process.env.WORKSPACE_DIR ||
-    path.join(os.homedir(), '.openclaw', 'workspace');
   const messagesUrl = options.messagesUrl || process.env.MESSAGES_MCP_URL || 'http://messages-mcp:3000/mcp';
   const calendarUrl = options.calendarUrl || process.env.CALENDAR_MCP_URL || 'http://calendar-mcp:3000/mcp';
   const emailUrl = options.emailUrl || process.env.EMAIL_MCP_URL || 'http://email-mcp:3000/mcp';
   const callTool = options.callTool || callMcpTool;
   const nowFn = options.now || (() => new Date());
-  const fsImpl = options.fs || fs;
   const budgetMs = options.budgetMs ?? 45_000;
   const emailConcurrency = options.emailConcurrency ?? 6;
   const startedAt = Date.now();
-
-  async function fileExists(filePath) {
-    try {
-      await fsImpl.access(filePath);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function getMemories() {
-    const memoryPath = path.join(workspaceDir, 'MEMORY.md');
-    let longTerm = null;
-    if (await fileExists(memoryPath)) {
-      const content = await fsImpl.readFile(memoryPath, 'utf8');
-      longTerm = content.trim() || null;
-    }
-
-    const dailyLogs = [];
-    const now = nowFn();
-    for (let i = 0; i < 3; i++) {
-      const date = getLocalYYYYMMDD(now, i);
-      const dailyPath = path.join(workspaceDir, 'memory', `${date}.md`);
-      if (await fileExists(dailyPath)) {
-        const content = await fsImpl.readFile(dailyPath, 'utf8');
-        dailyLogs.push({ date, content: content.trim() });
-      }
-    }
-
-    return { long_term: longTerm, daily_logs: dailyLogs };
-  }
 
   async function getMessages() {
     const result = await callTool(messagesUrl, 'list_messages', { days: 3, limit: 30 });
@@ -307,8 +259,7 @@ export function createGenerator(options = {}) {
   }
 
   async function generate() {
-    const [memories, messages, calendar, inbox] = await Promise.all([
-      getMemories(),
+    const [messages, calendar, inbox] = await Promise.all([
       getMessages(),
       getCalendar(),
       getInbox(),
@@ -316,7 +267,6 @@ export function createGenerator(options = {}) {
 
     return {
       generated_at: nowFn().toISOString(),
-      memories,
       messages,
       calendar,
       inbox,
@@ -325,7 +275,6 @@ export function createGenerator(options = {}) {
 
   return {
     generate,
-    getMemories,
     getMessages,
     getCalendar,
     getInbox,

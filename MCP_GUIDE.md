@@ -9,7 +9,7 @@ This repo exposes **six** MCP servers over Streamable HTTP. OpenClaw reaches the
 | Messages | `messages` | `messages-mcp` | `http://messages-mcp:3000/mcp` | Read-only archive of WhatsApp, Google Messages, and Instagram. Cannot send. |
 | Mood journal | `mood-journal` | `mood-journal-mcp` | `http://mood-journal-mcp:3000/mcp` | Read/write personal journal. Server owns timestamps. |
 | Google Health | `google-health` | `google-health-mcp` | `http://google-health-mcp:3000/mcp` | Read-only sleep, exercise, and daily activity. Cannot write health data. |
-| Context | `context` | `context-mcp` | `http://context-mcp:3000/mcp` | Read-only aggregated dump of memories, messages, calendar, and inbox. |
+| Context | `context` | `context-mcp` | `http://context-mcp:3000/mcp` | Read-only aggregated dump of messages, calendar, and inbox. |
 
 Transport in OpenClaw config is `streamable-http`. Each process also serves `GET /healthz` on the same port.
 
@@ -965,10 +965,10 @@ Missing metrics are `null`. Data appears after the Fitbit / Google Health app sy
 
 ## 6. Context (`context`)
 
-Read-only aggregate of OpenClaw workspace memories plus the messages, calendar, and email MCP servers. Replaces the old `scripts/generate_context.js` exec helper. Cannot write files or call any mutating tool.
+Read-only aggregate of the messages, calendar, and email MCP servers. Does not read OpenClaw workspace files. Replaces the old `scripts/generate_context.js` exec helper. Cannot write files or call any mutating tool.
 
-- **Health:** `{ "ok": true, "workspace": true }` when `WORKSPACE_DIR` exists.
-- **Sources:** `MEMORY.md` and the last three daily logs under `memory/YYYY-MM-DD.md`; `messages.list_messages` (3 days, limit 30); `calendar.list_events` (next 2 events, 30-day window); `email.search_messages` (`in:inbox newer_than:3m`, max 20) with `get_message` for bodies.
+- **Health:** `{ "ok": true }`
+- **Sources:** `messages.list_messages` (3 days, limit 30); `calendar.list_events` (next 2 events, 30-day window); `email.search_messages` (`in:inbox newer_than:3m`, max 20) with `get_message` for bodies.
 - **Cap:** 256 KiB. Section-level MCP errors are fields on that section (`error`); they do not fail the whole call.
 - **Time:** Downstream MCP calls abort after 10s. Inbox bodies are fetched 6 at a time (search snippets if the budget is exhausted). OpenClaw config should set `requestTimeoutMs: 120000` for this server.
 
@@ -985,12 +985,6 @@ Build the full context dump. No arguments.
 ```json
 {
   "generated_at": "2026-09-10T19:00:00.000Z",
-  "memories": {
-    "long_term": "I live in Brooklyn.",
-    "daily_logs": [
-      { "date": "2026-09-10", "content": "shipped context MCP" }
-    ]
-  },
   "messages": {
     "threads": [
       {
@@ -1026,7 +1020,7 @@ Build the full context dump. No arguments.
 }
 ```
 
-Empty sections use `null` / `[]`. A failed downstream call is `{ "error": "…", "threads": [] }` (or `"events": []` for calendar). Missing `MEMORY.md` is `"long_term": null`.
+Empty sections use `[]`. A failed downstream call is `{ "error": "…", "threads": [] }` (or `"events": []` for calendar).
 
 ### Not available
 

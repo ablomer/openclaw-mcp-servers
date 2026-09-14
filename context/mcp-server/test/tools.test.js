@@ -1,7 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGenerator,
@@ -13,14 +10,6 @@ import {
 import { createTools } from '../src/tools.js';
 import { callMcpTool } from '../src/mcp-client.js';
 import { truncatePayload } from '../src/validate.js';
-
-const workspaceDir = await mkdtemp(join(tmpdir(), 'context-mcp-'));
-const memoryDir = join(workspaceDir, 'memory');
-await mkdir(memoryDir);
-
-after(async () => {
-  await rm(workspaceDir, { recursive: true, force: true });
-});
 
 const NOW = new Date('2026-09-10T15:00:00-04:00');
 
@@ -44,7 +33,6 @@ function fakeCallTool(handlers) {
 function generatorWith(handlers, extra = {}) {
   const { calls, callTool } = fakeCallTool(handlers);
   const generator = createGenerator({
-    workspaceDir,
     messagesUrl: 'http://messages-mcp:3000/mcp',
     calendarUrl: 'http://calendar-mcp:3000/mcp',
     emailUrl: 'http://email-mcp:3000/mcp',
@@ -84,25 +72,6 @@ test('extractEmailBody prefers the longest usable body and skips 32KiB stubs', (
   });
   assert.equal(body, 'a longer email body with more text');
   assert.equal(extractEmailBody({ reason: 'payload exceeded 32KiB cap', body: 'hidden' }), '');
-});
-
-test('getMemories reads MEMORY.md and the last three daily logs', async () => {
-  await writeFile(join(workspaceDir, 'MEMORY.md'), '  I live in Brooklyn.\n');
-  await writeFile(join(memoryDir, '2026-09-10.md'), 'Today: shipped context MCP\n');
-  await writeFile(join(memoryDir, '2026-09-08.md'), 'Two days ago\n');
-
-  const { generator } = generatorWith({});
-  const memories = await generator.getMemories();
-  assert.equal(memories.long_term, 'I live in Brooklyn.');
-  assert.deepEqual(
-    memories.daily_logs.map((log) => log.date),
-    ['2026-09-10', '2026-09-08'],
-  );
-  assert.equal(memories.daily_logs[0].content, 'Today: shipped context MCP');
-  assert.equal(
-    memories.daily_logs.some((log) => log.date === '2026-09-09'),
-    false,
-  );
 });
 
 test('getMessages formats threads and outbound senders', async () => {
@@ -259,8 +228,7 @@ test('getInbox uses snippets when the time budget is exhausted', async () => {
   assert.equal(payload.threads[0].body, 'from search');
 });
 
-test('generate assembles all four sections', async () => {
-  await writeFile(join(workspaceDir, 'MEMORY.md'), 'remember this');
+test('generate assembles messages, calendar, and inbox', async () => {
   const { generator } = generatorWith({
     list_messages: () => ({ threads: [] }),
     list_events: () => ({ events: [] }),
@@ -269,7 +237,7 @@ test('generate assembles all four sections', async () => {
 
   const payload = await generator.generate();
   assert.equal(payload.generated_at, NOW.toISOString());
-  assert.equal(payload.memories.long_term, 'remember this');
+  assert.equal('memories' in payload, false);
   assert.deepEqual(payload.messages.threads, []);
   assert.deepEqual(payload.calendar.events, []);
   assert.deepEqual(payload.inbox.threads, []);
