@@ -121,6 +121,18 @@ writer.upsertMessage({
   conversationTitle: 'Family',
   threadType: 'group',
 });
+writer.upsertMessage({
+  source: 'gmessages',
+  nativeId: 'gm-unknown-1',
+  conversationNativeId: 'broadcast',
+  senderNativeId: 'svc',
+  senderDisplayName: 'Service',
+  direction: 'inbound',
+  sentAt: zonedLocalToUtcMs(2026, 9, 10, 10, 0, 0),
+  body: 'broadcast noise for unknown thread',
+  conversationTitle: 'Broadcast',
+  threadType: 'unknown',
+});
 writerDb.close();
 
 const db = openReadOnlyDb(dbPath);
@@ -235,6 +247,22 @@ test('list_messages include_empty returns body-less messages', () => {
   const family = payload.threads.find((thread) => thread.chat_id === 'whatsapp:family');
   assert.equal(family?.messages.some((row) => row.id === 'whatsapp:wa-media' && row.body == null), true);
   assert.equal(family?.messages.some((row) => row.id === 'whatsapp:wa-blank' && row.body === '   '), true);
+});
+
+test('tools omit conversations with unknown thread_type', () => {
+  const listed = parse(tools.listRecentConversations({ limit: 20 }));
+  assert.equal(listed.conversations.some((row) => row.thread_type === 'unknown'), false);
+  assert.equal(listed.conversations.some((row) => row.chat_id === 'gmessages:broadcast'), false);
+
+  const missing = tools.getThreadHistory({ chat_id: 'gmessages:broadcast' });
+  assert.equal(missing.isError, true);
+
+  const searched = parse(tools.searchMessages({ query: 'broadcast noise' }));
+  assert.equal(searched.results.length, 0);
+
+  const rangedPayload = parse(ranged.listMessages({ days: 3 }));
+  assert.equal(rangedPayload.threads.some((thread) => thread.thread_type === 'unknown'), false);
+  assert.equal(rangedPayload.threads.some((thread) => thread.chat_id === 'gmessages:broadcast'), false);
 });
 
 test('list_messages uses peer contact names when the stored title is a jid', () => {

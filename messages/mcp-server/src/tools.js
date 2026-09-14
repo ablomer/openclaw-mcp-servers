@@ -22,6 +22,8 @@ const RESOLVED_TITLE_SQL = `
   END
 `;
 
+const KNOWN_THREAD_SQL = `conv.thread_type IN ('dm', 'group')`;
+
 function displaySender(row) {
   if (row.direction === 'outbound') return 'You';
   return row.sender;
@@ -76,13 +78,16 @@ export function createTools(db, { nowMs } = {}) {
     LEFT JOIN contacts peer
       ON peer.source = conv.source AND peer.native_id = conv.native_id
     WHERE conv.last_message_at > 0
+      AND ${KNOWN_THREAD_SQL}
       AND (? IS NULL OR conv.source = ?)
       AND (? IS NULL OR conv.last_message_at < ?)
     ORDER BY conv.last_message_at DESC
     LIMIT ?
   `);
 
-  const threadExistsStmt = db.prepare('SELECT id FROM conversations WHERE id = ?');
+  const threadExistsStmt = db.prepare(
+    `SELECT id FROM conversations conv WHERE conv.id = ? AND ${KNOWN_THREAD_SQL}`,
+  );
 
   const threadStmt = db.prepare(`
     SELECT
@@ -123,6 +128,7 @@ export function createTools(db, { nowMs } = {}) {
       ON peer.source = conv.source AND peer.native_id = conv.native_id
     WHERE m.sent_at >= ?
       AND m.sent_at < ?
+      AND ${KNOWN_THREAD_SQL}
       AND (? IS NULL OR m.source = ?)
       AND (? = 1 OR (m.body IS NOT NULL AND TRIM(m.body) <> ''))
     ORDER BY m.sent_at DESC
@@ -142,8 +148,10 @@ export function createTools(db, { nowMs } = {}) {
       m.body
     FROM messages_fts
     JOIN messages m ON m.rowid = messages_fts.rowid
+    JOIN conversations conv ON conv.id = m.conversation_id
     LEFT JOIN contacts c ON c.id = m.sender_contact_id
     WHERE messages_fts MATCH ?
+      AND ${KNOWN_THREAD_SQL}
       AND (? IS NULL OR m.source = ?)
       AND (? IS NULL OR m.conversation_id = ?)
       AND (? IS NULL OR m.sent_at < ?)

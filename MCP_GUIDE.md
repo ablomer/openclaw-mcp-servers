@@ -369,6 +369,7 @@ Read-only SQLite archive filled by WhatsApp, Google Messages, and Instagram work
 - **Deleted rows:** workers may set `is_deleted`; these queries do not filter it, so deleted messages can still appear.
 - **Full-text search:** operators (`AND`/`OR`/`NOT`/`NEAR`) and `"'*(){}[]^~:` are stripped; the remaining phrase is matched. After stripping, at least 2 characters must remain.
 - **Search results** include a `snippet`, never the full `body` or `raw_json`.
+- **Unknown threads:** conversations with `thread_type` `unknown` are omitted from every tool. `get_thread_history` treats them as `Unknown chat_id`.
 
 ### `list_recent_conversations`
 
@@ -403,11 +404,11 @@ Paging: pass the oldest `last_message_at` from the previous page as `before_ts`.
 }
 ```
 
-`thread_type` is `dm`, `group`, or `unknown`. `last_preview` is the body trimmed to 180 characters, with `…` appended if it was cut; empty bodies are `null`.
+`thread_type` is `dm` or `group`. Threads stored as `unknown` are omitted. `last_preview` is the body trimmed to 180 characters, with `…` appended if it was cut; empty bodies are `null`.
 
 ### `get_thread_history`
 
-Recent messages for one chat (newest first). Malformed `chat_id` → `invalid chat_id`. Unknown `chat_id` → `Unknown chat_id`.
+Recent messages for one chat (newest first). Malformed `chat_id` → `invalid chat_id`. Missing or `unknown` `thread_type` → `Unknown chat_id`.
 
 | Argument | Type | Required | Constraints | Default |
 | --- | --- | --- | --- | --- |
@@ -496,7 +497,7 @@ Messages in a calendar-day range, grouped by thread. Dates are **America/New_Yor
 }
 ```
 
-Threads are newest activity first. Messages inside a thread are oldest first (conversation order). By default, rows with a null or whitespace-only `body` are omitted (set `include_empty: true` to keep media-only and other body-less messages). `truncated: true` means more than `limit` messages matched; narrow `from`/`to` or raise `limit`.
+Threads are newest activity first. Messages inside a thread are oldest first (conversation order). By default, rows with a null or whitespace-only `body` are omitted (set `include_empty: true` to keep media-only and other body-less messages). Threads with `thread_type` `unknown` are omitted. `truncated: true` means more than `limit` messages matched; narrow `from`/`to` or raise `limit`.
 
 ### `search_messages`
 
@@ -537,7 +538,7 @@ Full-text search over archived bodies. Snippets only.
 }
 ```
 
-Newest matches first. There is no `body` field. A well-formed but unknown `chat_id` returns an empty `results` list.
+Newest matches first. There is no `body` field. A well-formed but unknown `chat_id` returns an empty `results` list. Messages in `unknown` threads are omitted.
 
 ### Not available
 
