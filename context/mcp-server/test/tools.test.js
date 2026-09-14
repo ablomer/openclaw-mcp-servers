@@ -193,7 +193,7 @@ test('getInbox fetches bodies in parallel and falls back to snippets', async () 
   });
 
   const payload = await generator.getInbox();
-  assert.equal(calls[0].args.query, 'in:inbox newer_than:3m');
+  assert.equal(calls[0].args.query, 'in:inbox newer_than:3d');
   assert.equal(calls.filter((c) => c.toolName === 'get_thread').length, 0);
   assert.ok(maxInFlight > 1, 'email bodies should fetch concurrently');
   assert.equal(payload.threads[0].subject, 'Invoice');

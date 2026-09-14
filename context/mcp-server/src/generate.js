@@ -224,7 +224,7 @@ export function createGenerator(options = {}) {
 
   async function getInbox() {
     const result = await callTool(emailUrl, 'search_messages', {
-      query: 'in:inbox newer_than:3m',
+      query: 'in:inbox newer_than:3d',
       max: 20,
     });
 

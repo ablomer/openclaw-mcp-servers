@@ -969,7 +969,7 @@ Missing metrics are `null`. Data appears after the Fitbit / Google Health app sy
 Read-only aggregate of the messages, calendar, and email MCP servers. Does not read OpenClaw workspace files. Replaces the old `scripts/generate_context.js` exec helper. Cannot write files or call any mutating tool.
 
 - **Health:** `{ "ok": true }`
-- **Sources:** `messages.list_messages` (3 days, limit 30); `calendar.list_events` (next 2 events, 30-day window); `email.search_messages` (`in:inbox newer_than:3m`, max 20) with `get_message` for bodies.
+- **Sources:** `messages.list_messages` (3 days, limit 30); `calendar.list_events` (next 2 events, 30-day window); `email.search_messages` (`in:inbox newer_than:3d`, max 20) with `get_message` for bodies.
 - **Cap:** 256 KiB. Section-level MCP errors are fields on that section (`error`); they do not fail the whole call.
 - **Time:** Downstream MCP calls abort after 10s. Inbox bodies are fetched 6 at a time (search snippets if the budget is exhausted). OpenClaw config should set `requestTimeoutMs: 120000` for this server.
 
