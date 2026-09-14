@@ -71,12 +71,19 @@ export class MessageWriter {
         is_deleted = excluded.is_deleted,
         message_type = excluded.message_type,
         raw_json = excluded.raw_json,
+        reply_to_id = COALESCE(excluded.reply_to_id, messages.reply_to_id),
         sender_contact_id = COALESCE(excluded.sender_contact_id, messages.sender_contact_id)
     `);
     this.rollupConversation = db.prepare(`
       UPDATE conversations
       SET last_message_at = @sent_at,
           last_preview = @preview,
+          updated_at = @updated_at
+      WHERE id = @id AND last_message_at <= @sent_at
+    `);
+    this.touchConversationActivity = db.prepare(`
+      UPDATE conversations
+      SET last_message_at = @sent_at,
           updated_at = @updated_at
       WHERE id = @id AND last_message_at <= @sent_at
     `);
@@ -195,14 +202,24 @@ export class MessageWriter {
       }),
     );
 
-    runWithBusyRetry(() =>
-      this.rollupConversation.run({
-        id: conversationId,
-        sent_at: Number(sentAt),
-        preview: preview(body),
-        updated_at: ingested_at,
-      }),
-    );
+    if (messageType === 'reaction') {
+      runWithBusyRetry(() =>
+        this.touchConversationActivity.run({
+          id: conversationId,
+          sent_at: Number(sentAt),
+          updated_at: ingested_at,
+        }),
+      );
+    } else {
+      runWithBusyRetry(() =>
+        this.rollupConversation.run({
+          id: conversationId,
+          sent_at: Number(sentAt),
+          preview: preview(body),
+          updated_at: ingested_at,
+        }),
+      );
+    }
 
     return id;
   }

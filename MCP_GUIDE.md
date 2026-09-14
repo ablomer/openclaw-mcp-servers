@@ -370,6 +370,7 @@ Read-only SQLite archive filled by WhatsApp, Google Messages, and Instagram work
 - **Full-text search:** operators (`AND`/`OR`/`NOT`/`NEAR`) and `"'*(){}[]^~:` are stripped; the remaining phrase is matched. After stripping, at least 2 characters must remain.
 - **Search results** include a `snippet`, never the full `body` or `raw_json`.
 - **Unknown threads:** conversations with `thread_type` `unknown` are omitted from every tool. `get_thread_history` treats them as `Unknown chat_id`.
+- **Reactions:** stored as `message_type` `reaction` and linked with `reply_to_id`. `list_messages` and `get_thread_history` nest them on the parent as `reactions` (`sender`, `direction`, `sent_at`, `body`) and do not return linked reactions as their own message. Empty bodies (an un-react) are omitted. A reaction without `reply_to_id` (older rows, before the parent id was stored) still appears in `messages`. `search_messages` skips reactions. A reaction does not replace the conversation `last_preview`.
 
 ### `list_recent_conversations`
 
@@ -434,7 +435,10 @@ Recent messages for one chat (newest first). Malformed `chat_id` → `invalid ch
       "sent_at": 1700000100000,
       "message_type": "text",
       "body": "dinner at seven with the neighbors",
-      "reply_to_id": null
+      "reply_to_id": null,
+      "reactions": [
+        { "sender": "Mom", "direction": "inbound", "sent_at": 1700000120000, "body": "❤️" }
+      ]
     }
   ]
 }
@@ -443,8 +447,9 @@ Recent messages for one chat (newest first). Malformed `chat_id` → `invalid ch
 Newest first. Use `before_ts` with the oldest `sent_at` from a page to walk further back.
 
 `direction`: `inbound`, `outbound`, `system`.  
-`message_type`: `text`, `image`, `video`, `audio`, `document`, `sticker`, `reaction`, `other`.  
-`sender` is the contact display name, or `null` if there is no contact row.
+`message_type`: `text`, `image`, `video`, `audio`, `document`, `sticker`, `other`.  
+`sender` is the contact display name, or `null` if there is no contact row.  
+`reactions` is omitted when the message has none.
 
 ### `list_messages`
 
@@ -489,7 +494,10 @@ Messages in a calendar-day range, grouped by thread. Dates are **America/New_Yor
           "sent_at": "Thursday, 2026-09-10 11:00:00 AM EDT",
           "message_type": "text",
           "body": "running a few minutes late",
-          "reply_to_id": null
+          "reply_to_id": null,
+          "reactions": [
+            { "sender": "You", "direction": "outbound", "sent_at": "Thursday, 2026-09-10 11:02:00 AM EDT", "body": "👍" }
+          ]
         }
       ]
     }
@@ -497,7 +505,7 @@ Messages in a calendar-day range, grouped by thread. Dates are **America/New_Yor
 }
 ```
 
-Threads are newest activity first. Messages inside a thread are oldest first (conversation order). By default, rows with a null or whitespace-only `body` are omitted (set `include_empty: true` to keep media-only and other body-less messages). Threads with `thread_type` `unknown` are omitted. `truncated: true` means more than `limit` messages matched; narrow `from`/`to` or raise `limit`.
+Threads are newest activity first. Messages inside a thread are oldest first (conversation order). Reactions are nested on the parent and do not count toward `limit`. By default, rows with a null or whitespace-only `body` are omitted (set `include_empty: true` to keep media-only and other body-less messages). Threads with `thread_type` `unknown` are omitted. `truncated: true` means more than `limit` messages matched; narrow `from`/`to` or raise `limit`.
 
 ### `search_messages`
 
@@ -993,7 +1001,7 @@ Build the full context dump. No arguments.
         "source": "whatsapp",
         "thread_type": "dm",
         "messages": [
-          { "sender": "Ada", "sent_at": "2026-09-10 10:00", "body": "hi" }
+          { "sender": "Ada", "sent_at": "2026-09-10 10:00", "body": "hi", "reactions": [{ "sender": "You", "sent_at": "2026-09-10 10:02", "body": "❤️" }] }
         ]
       }
     ]

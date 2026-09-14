@@ -83,7 +83,15 @@ test('getMessages formats threads and outbound senders', async () => {
           source: 'whatsapp',
           thread_type: 'dm',
           messages: [
-            { direction: 'inbound', sender: 'Ada', sent_at: '2026-09-10 10:00', body: 'hi' },
+            {
+              direction: 'inbound',
+              sender: 'Ada',
+              sent_at: '2026-09-10 10:00',
+              body: 'hi',
+              reactions: [
+                { direction: 'outbound', sender: 'you', sent_at: '2026-09-10 10:02', body: '❤️' },
+              ],
+            },
             { direction: 'outbound', sender: 'you', sent_at: '2026-09-10 10:01', body: 'hey' },
           ],
         },
@@ -105,7 +113,12 @@ test('getMessages formats threads and outbound senders', async () => {
     source: 'whatsapp',
     thread_type: 'dm',
     messages: [
-      { sender: 'Ada', sent_at: '2026-09-10 10:00', body: 'hi' },
+      {
+        sender: 'Ada',
+        sent_at: '2026-09-10 10:00',
+        body: 'hi',
+        reactions: [{ sender: 'You', sent_at: '2026-09-10 10:02', body: '❤️' }],
+      },
       { sender: 'You', sent_at: '2026-09-10 10:01', body: 'hey' },
     ],
   });

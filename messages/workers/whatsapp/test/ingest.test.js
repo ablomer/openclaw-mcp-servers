@@ -142,6 +142,65 @@ test('ingest stores contact and group names instead of raw jids', () => {
   db.close();
 });
 
+test('reactions point at the target message instead of standing alone', () => {
+  const reactionPath = join(dir, 'reactions.sqlite');
+  const db = migrate(reactionPath);
+  const writer = new MessageWriter(db);
+  const chats = new Map([['family@g.us', { id: 'family@g.us', name: "We're Going To Disney!" }]]);
+  const contacts = new Map([['mom@lid', { id: 'mom@lid', name: 'Mom' }]]);
+
+  ingestOne(writer, textMsg({
+    id: 'wa-group',
+    remoteJid: 'family@g.us',
+    participant: 'dad@lid',
+    pushName: 'Dad',
+    text: '❤️',
+    ts: 1_700_000_300,
+  }), { chats, contacts, selfName: 'Augusto' });
+
+  ingestOne(writer, {
+    key: { id: 'rxn-1', remoteJid: 'family@g.us', fromMe: false, participant: 'mom@lid' },
+    pushName: 'Mom',
+    messageTimestamp: 1_700_000_500,
+    message: {
+      reactionMessage: {
+        key: { id: 'wa-group', remoteJid: 'family@g.us', fromMe: false },
+        text: '😂',
+      },
+    },
+  }, { chats, contacts, selfName: 'Augusto' });
+
+  ingestOne(writer, {
+    key: { id: 'rxn-wrap', remoteJid: 'family@g.us', fromMe: true },
+    messageTimestamp: 1_700_000_600,
+    message: {
+      ephemeralMessage: {
+        message: {
+          reactionMessage: {
+            key: { id: 'wa-group', remoteJid: 'family@g.us', fromMe: false },
+            text: '👍',
+          },
+        },
+      },
+    },
+  }, { chats, contacts, selfName: 'Augusto' });
+
+  const rows = db.prepare(`
+    SELECT native_id, message_type, body, reply_to_id
+    FROM messages
+    ORDER BY native_id
+  `).all();
+  assert.deepEqual(rows, [
+    { native_id: 'rxn-1', message_type: 'reaction', body: '😂', reply_to_id: 'whatsapp:wa-group' },
+    { native_id: 'rxn-wrap', message_type: 'reaction', body: '👍', reply_to_id: 'whatsapp:wa-group' },
+    { native_id: 'wa-group', message_type: 'text', body: '❤️', reply_to_id: null },
+  ]);
+
+  const conv = db.prepare("SELECT last_preview FROM conversations WHERE native_id = 'family@g.us'").get();
+  assert.equal(conv.last_preview, '❤️');
+  db.close();
+});
+
 test('a later message without chat metadata does not replace a real title with a jid', () => {
   const laterPath = join(dir, 'later.sqlite');
   const db = migrate(laterPath);

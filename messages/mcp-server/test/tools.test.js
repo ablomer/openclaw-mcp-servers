@@ -122,6 +122,34 @@ writer.upsertMessage({
   threadType: 'group',
 });
 writer.upsertMessage({
+  source: 'whatsapp',
+  nativeId: 'wa-react',
+  conversationNativeId: 'family',
+  senderNativeId: 'dad',
+  senderDisplayName: 'Dad',
+  direction: 'inbound',
+  sentAt: zonedLocalToUtcMs(2026, 9, 9, 8, 20, 0),
+  messageType: 'reaction',
+  body: '❤️',
+  replyToNativeId: 'wa-4',
+  conversationTitle: 'Family',
+  threadType: 'group',
+});
+writer.upsertMessage({
+  source: 'whatsapp',
+  nativeId: 'wa-unreact',
+  conversationNativeId: 'family',
+  senderNativeId: 'mom',
+  senderDisplayName: 'Mom',
+  direction: 'inbound',
+  sentAt: zonedLocalToUtcMs(2026, 9, 9, 8, 21, 0),
+  messageType: 'reaction',
+  body: '',
+  replyToNativeId: 'wa-4',
+  conversationTitle: 'Family',
+  threadType: 'group',
+});
+writer.upsertMessage({
   source: 'gmessages',
   nativeId: 'gm-unknown-1',
   conversationNativeId: 'broadcast',
@@ -163,6 +191,15 @@ test('get_thread_history returns newest-first rows and 404s unknown ids', () => 
   const payload = parse(tools.getThreadHistory({ chat_id: 'whatsapp:family' }));
   assert.equal(payload.messages[0].body, 'bringing dessert');
   assert.equal(payload.messages[1].body, 'monday dinner plans');
+  assert.equal(payload.messages.some((row) => row.message_type === 'reaction'), false);
+  assert.deepEqual(payload.messages[0].reactions, [
+    {
+      sender: 'Dad',
+      direction: 'inbound',
+      sent_at: zonedLocalToUtcMs(2026, 9, 9, 8, 20, 0),
+      body: '❤️',
+    },
+  ]);
   const missing = tools.getThreadHistory({ chat_id: 'whatsapp:nope' });
   assert.equal(missing.isError, true);
 });
@@ -175,6 +212,8 @@ test('search_messages uses phrase match and omits raw bodies in favor of snippet
   const injected = tools.searchMessages({ query: 'dinner AND DROP TABLE messages' });
   const inj = parse(injected);
   assert.ok(!inj.results || inj.results.length >= 0);
+  const reactions = parse(tools.searchMessages({ query: '❤️' }));
+  assert.equal(reactions.results.some((row) => row.message_type === 'reaction'), false);
 });
 
 test('invalid chat_id is rejected', () => {
@@ -203,6 +242,11 @@ test('list_messages groups a calendar-day range by thread with display times', (
   );
   assert.equal(payload.threads[1].messages[0].sender, 'Dad');
   assert.equal(payload.threads[1].messages[1].sender, 'Mom');
+  assert.equal(payload.threads[1].messages.some((row) => row.message_type === 'reaction'), false);
+  assert.equal(payload.threads[1].messages[1].reactions.length, 1);
+  assert.equal(payload.threads[1].messages[1].reactions[0].sender, 'Dad');
+  assert.equal(payload.threads[1].messages[1].reactions[0].body, '❤️');
+  assert.match(payload.threads[1].messages[1].reactions[0].sent_at, /^Wednesday, 2026-09-09 8:20:00 AM EDT$/);
   assert.equal(JSON.stringify(payload).includes('sent_at":1'), false);
 });
 
@@ -311,6 +355,53 @@ test('list_messages uses peer contact names when the stored title is a jid', () 
   assert.equal(thread.messages[0].sender, 'You');
   assert.equal(thread.messages[0].body, 'Nêeeeee');
   assert.equal(thread.messages[1].sender, 'Maria');
+});
+
+test('list_messages keeps unlinked reactions as standalone messages', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'messages-orphan-rxn-'));
+  const orphanPath = join(dir, 'messages.sqlite');
+  const orphanWriterDb = migrate(orphanPath);
+  const orphanWriter = new MessageWriter(orphanWriterDb);
+  const noonMs = zonedLocalToUtcMs(2026, 9, 10, 12, 0, 0);
+
+  orphanWriter.upsertMessage({
+    source: 'whatsapp',
+    nativeId: 'wa-text',
+    conversationNativeId: 'family',
+    senderNativeId: 'dad',
+    senderDisplayName: 'Dad',
+    direction: 'inbound',
+    sentAt: zonedLocalToUtcMs(2026, 9, 9, 8, 0, 0),
+    body: 'hello',
+    conversationTitle: 'Family',
+    threadType: 'group',
+  });
+  orphanWriter.upsertMessage({
+    source: 'whatsapp',
+    nativeId: 'wa-old-rxn',
+    conversationNativeId: 'family',
+    senderNativeId: 'mom',
+    senderDisplayName: 'Mom',
+    direction: 'inbound',
+    sentAt: zonedLocalToUtcMs(2026, 9, 9, 8, 5, 0),
+    messageType: 'reaction',
+    body: '👍',
+    conversationTitle: 'Family',
+    threadType: 'group',
+  });
+  orphanWriterDb.close();
+
+  const orphanDb = openReadOnlyDb(orphanPath);
+  const orphanTools = createTools(orphanDb, { nowMs: noonMs });
+  const payload = parse(orphanTools.listMessages({ from: '2026-09-08', to: '2026-09-10' }));
+  const family = payload.threads[0];
+
+  orphanDb.close();
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.deepEqual(family.messages.map((row) => row.body), ['hello', '👍']);
+  assert.equal(family.messages[0].reactions, undefined);
+  assert.equal(family.messages[1].message_type, 'reaction');
 });
 
 test('list_messages limit ignores excluded empty bodies', () => {

@@ -41,7 +41,24 @@ function formatRangeMessage(row) {
   };
 }
 
-function groupByThread(rows) {
+function formatReaction(row, { displayTimes }) {
+  return {
+    sender: displaySender(row),
+    direction: row.direction,
+    sent_at: displayTimes ? displayTime(row.sent_at) : row.sent_at,
+    body: row.body,
+  };
+}
+
+function attachReactions(messages, grouped) {
+  return messages.map((msg) => {
+    const reactions = grouped.get(msg.id);
+    if (!reactions?.length) return msg;
+    return { ...msg, reactions };
+  });
+}
+
+function groupByThread(rows, reactionMap) {
   const threads = [];
   const index = new Map();
   for (const row of rows) {
@@ -61,6 +78,7 @@ function groupByThread(rows) {
   }
   for (const thread of threads) {
     thread.messages.reverse();
+    thread.messages = attachReactions(thread.messages, reactionMap);
   }
   return threads;
 }
@@ -103,6 +121,7 @@ export function createTools(db, { nowMs } = {}) {
     FROM messages m
     LEFT JOIN contacts c ON c.id = m.sender_contact_id
     WHERE m.conversation_id = ?
+      AND (m.message_type <> 'reaction' OR m.reply_to_id IS NULL)
       AND (? IS NULL OR m.sent_at < ?)
     ORDER BY m.sent_at DESC
     LIMIT ?
@@ -130,6 +149,7 @@ export function createTools(db, { nowMs } = {}) {
       AND m.sent_at < ?
       AND ${KNOWN_THREAD_SQL}
       AND (? IS NULL OR m.source = ?)
+      AND (m.message_type <> 'reaction' OR m.reply_to_id IS NULL)
       AND (? = 1 OR (m.body IS NOT NULL AND TRIM(m.body) <> ''))
     ORDER BY m.sent_at DESC
     LIMIT ?
@@ -151,6 +171,7 @@ export function createTools(db, { nowMs } = {}) {
     JOIN conversations conv ON conv.id = m.conversation_id
     LEFT JOIN contacts c ON c.id = m.sender_contact_id
     WHERE messages_fts MATCH ?
+      AND m.message_type <> 'reaction'
       AND ${KNOWN_THREAD_SQL}
       AND (? IS NULL OR m.source = ?)
       AND (? IS NULL OR m.conversation_id = ?)
@@ -158,6 +179,33 @@ export function createTools(db, { nowMs } = {}) {
     ORDER BY m.sent_at DESC
     LIMIT ?
   `);
+
+  const reactionsStmt = db.prepare(`
+    SELECT
+      m.reply_to_id,
+      c.display_name AS sender,
+      m.direction,
+      m.sent_at,
+      m.body
+    FROM messages m
+    LEFT JOIN contacts c ON c.id = m.sender_contact_id
+    WHERE m.message_type = 'reaction'
+      AND m.reply_to_id IN (SELECT value FROM json_each(?))
+      AND m.body IS NOT NULL AND TRIM(m.body) <> ''
+    ORDER BY m.sent_at ASC
+  `);
+
+  function reactionsFor(messages, { displayTimes }) {
+    const ids = messages.map((row) => row.id).filter(Boolean);
+    if (ids.length === 0) return new Map();
+    const grouped = new Map();
+    for (const row of reactionsStmt.all(JSON.stringify(ids))) {
+      const list = grouped.get(row.reply_to_id) || [];
+      list.push(formatReaction(row, { displayTimes }));
+      grouped.set(row.reply_to_id, list);
+    }
+    return grouped;
+  }
 
   return {
     listRecentConversations({ source, limit, before_ts } = {}) {
@@ -185,7 +233,9 @@ export function createTools(db, { nowMs } = {}) {
           ...row,
           sender: displaySender(row),
         }));
-        return textResult({ messages: rows });
+        return textResult({
+          messages: attachReactions(rows, reactionsFor(rows, { displayTimes: false })),
+        });
       } catch (err) {
         return errorResult(err.message || 'get_thread_history failed');
       }
@@ -214,7 +264,7 @@ export function createTools(db, { nowMs } = {}) {
           from: window.from,
           to: window.to,
           truncated,
-          threads: groupByThread(kept),
+          threads: groupByThread(kept, reactionsFor(kept, { displayTimes: true })),
         });
       } catch (err) {
         return errorResult(err.message || 'list_messages failed');

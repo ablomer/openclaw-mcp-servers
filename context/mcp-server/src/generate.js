@@ -30,6 +30,22 @@ function messageSender(msg, thread) {
   return msg.sender || 'Unknown';
 }
 
+function formatContextMessage(msg, thread) {
+  const out = {
+    sender: messageSender(msg, thread),
+    sent_at: msg.sent_at || null,
+    body: msg.body || null,
+  };
+  if (Array.isArray(msg.reactions) && msg.reactions.length > 0) {
+    out.reactions = msg.reactions.map((reaction) => ({
+      sender: messageSender(reaction, thread),
+      sent_at: reaction.sent_at || null,
+      body: reaction.body || null,
+    }));
+  }
+  return out;
+}
+
 /**
  * gog does not accept the Google alias "primary". Prefer the calendar marked
  * primary in list_calendars (usually the account email), else the first id.
@@ -175,11 +191,7 @@ export function createGenerator(options = {}) {
     const payload = {
       threads: (result.threads || []).map((thread) => ({
         ...threadMeta(thread),
-        messages: (thread.messages || []).map((msg) => ({
-          sender: messageSender(msg, thread),
-          sent_at: msg.sent_at || null,
-          body: msg.body || null,
-        })),
+        messages: (thread.messages || []).map((msg) => formatContextMessage(msg, thread)),
       })),
     };
     if (result.truncated) payload.truncated = true;

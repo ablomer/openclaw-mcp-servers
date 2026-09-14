@@ -61,6 +61,90 @@ test('migrate + upsert + fts', () => {
   db.close();
 });
 
+test('reactions do not replace the conversation preview', () => {
+  const reactionPath = join(dir, 'reaction-preview.sqlite');
+  const db = migrate(reactionPath);
+  const writer = new MessageWriter(db);
+  writer.upsertMessage({
+    source: 'whatsapp',
+    nativeId: 'm1',
+    conversationNativeId: 'chat1',
+    senderNativeId: 'alice',
+    senderDisplayName: 'Alice',
+    direction: 'inbound',
+    sentAt: 1_700_000_000_000,
+    body: 'hello there',
+    conversationTitle: 'Alice',
+    threadType: 'dm',
+  });
+  writer.upsertMessage({
+    source: 'whatsapp',
+    nativeId: 'rxn-1',
+    conversationNativeId: 'chat1',
+    senderNativeId: 'me',
+    senderDisplayName: 'You',
+    direction: 'outbound',
+    sentAt: 1_700_000_100_000,
+    messageType: 'reaction',
+    body: '👍',
+    replyToNativeId: 'm1',
+    conversationTitle: 'Alice',
+    threadType: 'dm',
+  });
+  const conv = db.prepare('SELECT last_preview, last_message_at FROM conversations WHERE native_id = ?').get('chat1');
+  assert.equal(conv.last_preview, 'hello there');
+  assert.equal(conv.last_message_at, 1_700_000_100_000);
+  db.close();
+});
+
+test('re-ingesting a reaction fills in a missing reply_to_id', () => {
+  const replayPath = join(dir, 'reaction-replay.sqlite');
+  const db = migrate(replayPath);
+  const writer = new MessageWriter(db);
+  writer.upsertMessage({
+    source: 'whatsapp',
+    nativeId: 'm1',
+    conversationNativeId: 'chat1',
+    senderNativeId: 'alice',
+    senderDisplayName: 'Alice',
+    direction: 'inbound',
+    sentAt: 1_700_000_000_000,
+    body: 'hello there',
+    conversationTitle: 'Alice',
+    threadType: 'dm',
+  });
+  writer.upsertMessage({
+    source: 'whatsapp',
+    nativeId: 'rxn-1',
+    conversationNativeId: 'chat1',
+    senderNativeId: 'me',
+    senderDisplayName: 'You',
+    direction: 'outbound',
+    sentAt: 1_700_000_100_000,
+    messageType: 'reaction',
+    body: '👍',
+    conversationTitle: 'Alice',
+    threadType: 'dm',
+  });
+  writer.upsertMessage({
+    source: 'whatsapp',
+    nativeId: 'rxn-1',
+    conversationNativeId: 'chat1',
+    senderNativeId: 'me',
+    senderDisplayName: 'You',
+    direction: 'outbound',
+    sentAt: 1_700_000_100_000,
+    messageType: 'reaction',
+    body: '👍',
+    replyToNativeId: 'm1',
+    conversationTitle: 'Alice',
+    threadType: 'dm',
+  });
+  const row = db.prepare("SELECT reply_to_id FROM messages WHERE native_id = 'rxn-1'").get();
+  assert.equal(row.reply_to_id, 'whatsapp:m1');
+  db.close();
+});
+
 test('conversation title ignores native ids and does not overwrite a real name', () => {
   const titleDbPath = join(dir, 'titles.sqlite');
   const db = migrate(titleDbPath);

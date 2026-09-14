@@ -124,6 +124,7 @@ export function ingestOne(writer, msg, { chats, contacts, selfName } = {}) {
   if (!msg?.key?.id || !msg.key.remoteJid) return;
   if (msg.messageStubType && !msg.message) return;
   const remote = conversationNativeId(msg);
+  const type = messageTypeOf(msg);
   writer.upsertMessage({
     source: SOURCE,
     nativeId: msg.key.id,
@@ -132,7 +133,7 @@ export function ingestOne(writer, msg, { chats, contacts, selfName } = {}) {
     senderDisplayName: senderDisplayName(msg, { contacts, selfName }),
     direction: msg.key.fromMe ? 'outbound' : 'inbound',
     sentAt: sentAt(msg),
-    messageType: messageTypeOf(msg),
+    messageType: type,
     body: bodyOf(msg),
     replyToNativeId: replyNativeId(msg),
     conversationTitle: conversationTitle(msg, { chats, contacts }),
@@ -140,13 +141,25 @@ export function ingestOne(writer, msg, { chats, contacts, selfName } = {}) {
     raw: {
       remoteJid: remote,
       fromMe: !!msg.key.fromMe,
-      hasMedia: messageTypeOf(msg) !== 'text' && messageTypeOf(msg) !== 'other',
+      hasMedia: type !== 'text' && type !== 'reaction' && type !== 'other',
     },
   });
 }
 
-export function messageTypeOf(msg) {
+function innerContent(msg) {
   const m = msg.message || {};
+  return (
+    m.ephemeralMessage?.message
+    || m.viewOnceMessage?.message
+    || m.viewOnceMessageV2?.message
+    || m.viewOnceMessageV2Extension?.message
+    || m.documentWithCaptionMessage?.message
+    || m
+  );
+}
+
+export function messageTypeOf(msg) {
+  const m = innerContent(msg);
   if (m.conversation || m.extendedTextMessage) return 'text';
   if (m.imageMessage) return 'image';
   if (m.videoMessage) return 'video';
@@ -158,7 +171,7 @@ export function messageTypeOf(msg) {
 }
 
 export function bodyOf(msg) {
-  const m = msg.message || {};
+  const m = innerContent(msg);
   return (
     m.conversation ||
     m.extendedTextMessage?.text ||
@@ -171,7 +184,9 @@ export function bodyOf(msg) {
 }
 
 function replyNativeId(msg) {
-  const ctx = msg.message?.extendedTextMessage?.contextInfo;
+  const m = innerContent(msg);
+  if (m.reactionMessage?.key?.id) return m.reactionMessage.key.id;
+  const ctx = m.extendedTextMessage?.contextInfo;
   return ctx?.stanzaId || null;
 }
 
