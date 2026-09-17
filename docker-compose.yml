@@ -36,6 +36,19 @@ services:
       - "traefik.http.routers.clawd-secure.service=clawd"
       - "traefik.http.services.clawd.loadbalancer.server.port=18789"
       - "traefik.docker.network=proxy"
+  gitwatch:
+    image: ghcr.io/gitwatch/gitwatch:latest
+    user: "1000:1000"
+    environment:
+      - GIT_WATCH_DIR=/app/watched-repo
+      - GIT_REMOTE=origin
+      - GIT_BRANCH=main
+      - COMMIT_MSG=Auto-commit on change
+      - COMMIT_ON_START=true
+    volumes:
+      - /etc/passwd:/etc/passwd:ro
+      - ${DATA_DIR}/openclaw/data/workspace/vault:/app/watched-repo
+      - ${DATA_DIR}/openclaw/ssh:/home/augusto/.ssh
 
 networks:
   proxy:
