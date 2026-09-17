@@ -20,6 +20,12 @@ import (
 
 const scope = "gmessages"
 
+const (
+	minRetry     = 2 * time.Second
+	maxRetry     = 30 * time.Second
+	persistEvery = 15 * time.Minute
+)
+
 type Config struct {
 	DBPath          string
 	SessionsDir     string
@@ -42,17 +48,21 @@ func Run(ctx context.Context, cfg Config) error {
 
 	sessDir := session.Dir(cfg.SessionsDir)
 	log.Event(scope, "started", map[string]any{"authDir": "gmessages"})
+	retry := minRetry
 
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		auth, err := session.Load(sessDir)
+		auth, fromBak, err := session.LoadInfo(sessDir)
 		if err != nil {
 			log.Event(scope, "session_load_failed", map[string]any{"name": errName(err)})
 			return err
 		}
-		if auth == nil || auth.Browser == nil {
+		if fromBak && session.Usable(auth) {
+			log.Event(scope, "session_restored", map[string]any{"hint": "reloaded session.json.bak after a previous invalidate"})
+		}
+		if !session.Usable(auth) {
 			if err := pair(ctx, cfg, writer, sessDir); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return err
@@ -65,6 +75,7 @@ func Run(ctx context.Context, cfg Config) error {
 				}
 				continue
 			}
+			retry = minRetry
 			continue
 		}
 		if err := connectAndServe(ctx, cfg, writer, sessDir, auth); err != nil {
@@ -72,12 +83,23 @@ func Run(ctx context.Context, cfg Config) error {
 				return err
 			}
 			log.Event(scope, "disconnected", map[string]any{"name": errName(err)})
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(2 * time.Second):
+			if isAuthError(err) {
+				log.Event(scope, "needs_cookies", map[string]any{
+					"hint": "drop cookies.json to refresh Google login; existing pairing is kept",
+				})
 			}
+			if err := session.WaitRetry(ctx, sessDir, retry); err != nil {
+				return err
+			}
+			if retry < maxRetry {
+				retry *= 2
+				if retry > maxRetry {
+					retry = maxRetry
+				}
+			}
+			continue
 		}
+		retry = minRetry
 	}
 }
 
@@ -92,34 +114,39 @@ func pair(ctx context.Context, cfg Config, writer *store.Writer, sessDir string)
 	auth.SetCookies(cookies)
 	rt := newRuntime(cfg, writer, sessDir, auth)
 	cli := rt.client
+	defer cli.Disconnect()
 	if err := cli.FetchConfig(ctx); err != nil {
 		log.Event(scope, "config_failed", map[string]any{"name": errName(err)})
 	}
-	err = cli.DoGaiaPairing(ctx, func(emoji string) {
-		log.Event(scope, "needs_pair", map[string]any{"emoji": emoji, "hint": "confirm this emoji on the phone"})
-	})
+	emoji, ps, err := cli.StartGaiaPairing(ctx)
 	if err != nil {
 		return err
 	}
+	log.Event(scope, "needs_pair", map[string]any{"emoji": emoji, "hint": "confirm this emoji on the phone"})
+	if _, err := cli.FinishGaiaPairing(ctx, ps); err != nil {
+		return err
+	}
+	cli.Disconnect()
 	if err := session.Save(sessDir, auth); err != nil {
 		return err
 	}
 	session.RemoveCookieFiles(sessDir)
-	log.Event(scope, "connected", nil)
-	go rt.backfill(context.WithoutCancel(ctx))
-	return rt.wait(ctx)
+	log.Event(scope, "paired", nil)
+	return nil
 }
 
 func connectAndServe(ctx context.Context, cfg Config, writer *store.Writer, sessDir string, auth *libgm.AuthData) error {
+	applied, err := session.ApplyCookiesFile(sessDir, auth)
+	if err != nil {
+		log.Event(scope, "cookies_invalid", map[string]any{"name": errName(err)})
+	} else if applied {
+		log.Event(scope, "cookies_merged", map[string]any{"hint": "refreshed Google cookies on existing pairing"})
+	}
 	rt := newRuntime(cfg, writer, sessDir, auth)
 	if err := rt.client.Connect(); err != nil {
-		if isFatalAuth(err) {
-			_ = session.Invalidate(sessDir)
-			log.Event(scope, "needs_pair", map[string]any{"hint": "session rejected; drop new cookies"})
-			return err
-		}
 		return err
 	}
+	rt.persist()
 	log.Event(scope, "connected", nil)
 	go func() {
 		select {
@@ -165,13 +192,21 @@ func newRuntime(cfg Config, writer *store.Writer, sessDir string, auth *libgm.Au
 }
 
 func (rt *runtime) wait(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		rt.client.Disconnect()
-		return ctx.Err()
-	case <-rt.logout:
-		rt.client.Disconnect()
-		return nil
+	ticker := time.NewTicker(persistEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			rt.persist()
+			rt.client.Disconnect()
+			return ctx.Err()
+		case <-rt.logout:
+			rt.persist()
+			rt.client.Disconnect()
+			return nil
+		case <-ticker.C:
+			rt.persist()
+		}
 	}
 }
 
@@ -224,7 +259,17 @@ func (rt *runtime) onEvent(raw any) {
 		}
 		go rt.backfill(context.Background())
 	case *gmproto.UserAlertEvent:
-		if evt.GetAlertType() == gmproto.AlertType_BROWSER_ACTIVE {
+		switch evt.GetAlertType() {
+		case gmproto.AlertType_BROWSER_ACTIVE:
+			go rt.backfill(context.Background())
+		case gmproto.AlertType_BROWSER_INACTIVE,
+			gmproto.AlertType_BROWSER_INACTIVE_FROM_TIMEOUT,
+			gmproto.AlertType_BROWSER_INACTIVE_FROM_INACTIVITY:
+			log.Event(scope, "browser_inactive", map[string]any{"alert": evt.GetAlertType().String()})
+			if err := rt.client.SetActiveSession(); err != nil {
+				log.Event(scope, "set_active_failed", map[string]any{"name": errName(err)})
+			}
+		case gmproto.AlertType_MOBILE_DATABASE_SYNC_COMPLETE:
 			go rt.backfill(context.Background())
 		}
 	case *events.PairSuccessful:
@@ -232,14 +277,11 @@ func (rt *runtime) onEvent(raw any) {
 	case *events.AuthTokenRefreshed:
 		rt.persist()
 	case *events.GaiaLoggedOut:
-		_ = session.Invalidate(rt.sessDir)
+		_ = session.Clear(rt.sessDir)
 		log.Event(scope, "needs_pair", map[string]any{"hint": "logged out; drop new cookies"})
 		rt.signalLogout()
 	case *events.ListenFatalError:
-		if isFatalAuth(evt.Error) {
-			_ = session.Invalidate(rt.sessDir)
-		}
-		log.Event(scope, "disconnected", map[string]any{"name": errName(evt.Error), "loggedOut": isFatalAuth(evt.Error)})
+		log.Event(scope, "disconnected", map[string]any{"name": errName(evt.Error), "loggedOut": false})
 		rt.signalLogout()
 	case *events.PhoneNotResponding:
 		log.Event(scope, "phone_not_responding", nil)
@@ -367,7 +409,7 @@ func cursorOf(resp *gmproto.ListMessagesResponse) *gmproto.Cursor {
 	return resp.GetCursor()
 }
 
-func isFatalAuth(err error) bool {
+func isAuthError(err error) bool {
 	if err == nil {
 		return false
 	}

@@ -1,6 +1,9 @@
 Google Messages pairing / re-pair (headless Debian)
 
-The phone must stay online. Pairing is a phone-relay session, not a cloud API.
+The phone must stay online while the worker is connected. Pairing is a phone-relay
+session, not a cloud API. The worker is meant to survive restarts: session.json
+holds the pairing keys, and Connect() refreshes the short-lived tachyon token.
+
 QR pairing is gone; use Google-account cookies.
 
 First pair
@@ -19,8 +22,14 @@ First pair
   Worker logs event=needs_pair with emoji. Confirm that emoji on the phone.
   Session is stored as session.json (mode 0600). Cookie files are deleted after a successful pair.
 
-Idle expiry / logout
-  Symptom: event=needs_pair again.
+Restart
+  Leave session.json in place. Do not delete it to "fix" a disconnect.
+  On boot the worker reloads it (or session.json.bak) and refreshes the token.
+
+Google cookies stale (event=needs_cookies)
+  Drop a fresh cookies file. The existing pairing is kept; no emoji confirm.
+
+Phone unpaired / real logout (event=needs_pair, hint: logged out)
   Drop a fresh cookies file and confirm the new emoji on the phone.
 
 Do not

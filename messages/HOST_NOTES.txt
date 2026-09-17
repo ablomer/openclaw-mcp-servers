@@ -30,4 +30,6 @@ OpenClaw host merge (do this on the production machine, never commit live config
    Copy /web/config as curl or JSON cookies (SID, HSID, SSID, OSID, APISID, SAPISID)
    into ${DATA_DIR}/openclaw/messages-data/sessions/gmessages/cookies.json
    Confirm the emoji logged by gmessages-worker on the phone.
+   Leave session.json in place across restarts. If logs show needs_cookies, drop a
+   fresh cookies file; that refreshes Google login without a new emoji pair.
 

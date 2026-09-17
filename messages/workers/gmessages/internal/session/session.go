@@ -15,6 +15,7 @@ import (
 
 const (
 	SessionFile     = "session.json"
+	SessionBakFile  = "session.json.bak"
 	CookiesJSONFile = "cookies.json"
 	CookiesCurlFile = "cookies.curl"
 )
@@ -23,8 +24,43 @@ func Dir(sessionsRoot string) string {
 	return filepath.Join(sessionsRoot, "gmessages")
 }
 
+func Usable(auth *libgm.AuthData) bool {
+	if auth == nil || auth.Browser == nil || len(auth.TachyonAuthToken) == 0 {
+		return false
+	}
+	if auth.RefreshKey == nil || len(auth.RefreshKey.D) == 0 {
+		return false
+	}
+	return true
+}
+
 func Load(dir string) (*libgm.AuthData, error) {
-	path := filepath.Join(dir, SessionFile)
+	auth, _, err := LoadInfo(dir)
+	return auth, err
+}
+
+func LoadInfo(dir string) (*libgm.AuthData, bool, error) {
+	auth, err := loadFile(filepath.Join(dir, SessionFile))
+	if err != nil {
+		return nil, false, err
+	}
+	if auth != nil {
+		return auth, false, nil
+	}
+	bak, err := loadFile(filepath.Join(dir, SessionBakFile))
+	if err != nil {
+		return nil, false, err
+	}
+	if bak == nil {
+		return nil, false, nil
+	}
+	if err := Save(dir, bak); err != nil {
+		return bak, true, nil
+	}
+	return bak, true, nil
+}
+
+func loadFile(path string) (*libgm.AuthData, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -79,6 +115,25 @@ func ReadCookiesFile(dir string) (map[string]string, string, error) {
 	return nil, "", os.ErrNotExist
 }
 
+func ApplyCookiesFile(dir string, auth *libgm.AuthData) (bool, error) {
+	if auth == nil {
+		return false, nil
+	}
+	cookies, _, err := ReadCookiesFile(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	auth.SetCookies(cookies)
+	if err := Save(dir, auth); err != nil {
+		return false, err
+	}
+	RemoveCookieFiles(dir)
+	return true, nil
+}
+
 func Invalidate(dir string) error {
 	path := filepath.Join(dir, SessionFile)
 	if _, err := os.Stat(path); err != nil {
@@ -87,7 +142,19 @@ func Invalidate(dir string) error {
 		}
 		return err
 	}
-	return os.Rename(path, path+".bak")
+	return os.Rename(path, filepath.Join(dir, SessionBakFile))
+}
+
+func Clear(dir string) error {
+	err1 := os.Remove(filepath.Join(dir, SessionFile))
+	err2 := os.Remove(filepath.Join(dir, SessionBakFile))
+	if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
+		return err1
+	}
+	if err2 != nil && !errors.Is(err2, os.ErrNotExist) {
+		return err2
+	}
+	return nil
 }
 
 func RemoveCookieFiles(dir string) {
@@ -119,6 +186,28 @@ func WaitForCookies(ctx context.Context, dir string) (map[string]string, error) 
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-ticker.C:
+		}
+	}
+}
+
+func WaitRetry(ctx context.Context, dir string, delay time.Duration) error {
+	if delay <= 0 {
+		delay = 2 * time.Second
+	}
+	deadline := time.Now().Add(delay)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, _, err := ReadCookiesFile(dir); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if !time.Now().Before(deadline) {
+				return nil
+			}
 		}
 	}
 }
