@@ -73,7 +73,7 @@ test('migrate + add + tags + fts', () => {
   db.close();
 });
 
-test('update is a patch and cannot change recorded_at via payload leftovers', () => {
+test('update is a patch and ignores recorded_at leftovers', () => {
   const db = migrate(join(dir, 'update.sqlite'));
   const writer = new JournalWriter(db);
   const created = writer.addEntry({ mood: 5, note: 'original', tags: ['a'] });
@@ -81,12 +81,30 @@ test('update is a patch and cannot change recorded_at via payload leftovers', ()
   const updated = writer.updateEntry(created.id, {
     note: 'edited',
     recorded_at: 1,
-    recordedAt: 1,
   });
   assert.equal(updated.note, 'edited');
   assert.equal(updated.mood, 5);
   assert.equal(updated.recorded_at, recorded);
   assert.deepEqual(updated.tags, ['a']);
+  db.close();
+});
+
+test('updateEntry changes recorded_at only when recordedAt is passed', () => {
+  const db = migrate(join(dir, 'update-when.sqlite'));
+  const writer = new JournalWriter(db);
+  const created = writer.addEntry({
+    mood: 5,
+    note: 'original',
+    recordedAt: Date.UTC(2026, 0, 2, 15, 0, 0),
+  });
+  const next = Date.UTC(2026, 0, 3, 18, 30, 0);
+  const moved = writer.updateEntry(created.id, { recordedAt: next });
+  assert.equal(moved.recorded_at, next);
+  assert.equal(moved.note, 'original');
+  const patched = writer.updateEntry(created.id, { note: 'still', recorded_at: 1 });
+  assert.equal(patched.note, 'still');
+  assert.equal(patched.recorded_at, next);
+  assert.throws(() => writer.updateEntry(created.id, { recordedAt: null }), /invalid recordedAt/);
   db.close();
 });
 

@@ -4,11 +4,12 @@
   "type": "module",
   "workspaces": [
     "packages/shared",
-    "mcp-server"
+    "mcp-server",
+    "web"
   ],
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "check": "node --check mcp-server/src/index.js && node --check packages/shared/src/writer.js && node --check packages/shared/src/time.js && node --check packages/shared/src/daylio.js && node --check scripts/backup.mjs && node --check scripts/seed-fixture.mjs && node --check scripts/import-daylio.mjs"
+    "check": "node --check mcp-server/src/index.js && node --check packages/shared/src/writer.js && node --check packages/shared/src/time.js && node --check packages/shared/src/daylio.js && node --check scripts/backup.mjs && node --check scripts/seed-fixture.mjs && node --check scripts/import-daylio.mjs && node --check web/src/index.js && node --check web/src/app.js && node --check web/src/auth.js && node --check web/src/entries.js"
   },
   "engines": {
     "node": ">=20.19.0"

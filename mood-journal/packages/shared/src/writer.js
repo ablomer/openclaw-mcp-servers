@@ -10,6 +10,13 @@ import {
 } from './fields.js';
 import { withTransaction } from './sqlite.js';
 
+function recordedAtFromPatch(patch, existing) {
+  if (patch.recordedAt === undefined) return existing;
+  const n = Number(patch.recordedAt);
+  if (patch.recordedAt == null || !Number.isFinite(n)) throw new Error('invalid recordedAt');
+  return n;
+}
+
 export class JournalWriter {
   constructor(db) {
     this.db = db;
@@ -24,6 +31,7 @@ export class JournalWriter {
     `);
     this.updateSql = db.prepare(`
       UPDATE entries SET
+        recorded_at = @recorded_at,
         mood = @mood,
         note = @note,
         energy = @energy,
@@ -97,6 +105,7 @@ export class JournalWriter {
     }
     const next = {
       id: entryId,
+      recorded_at: recordedAtFromPatch(patch, existing.recorded_at),
       mood: patch.mood === undefined ? existing.mood : assertRating('mood', patch.mood, { required: true }),
       note: patch.note === undefined ? existing.note : assertNote(patch.note),
       energy: patch.energy === undefined ? existing.energy : assertRating('energy', patch.energy),

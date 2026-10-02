@@ -28,7 +28,7 @@ The interesting work is not “expose Gmail.” It is deciding what the model is
 - **Email** always runs `gog` with `--readonly` and `--gmail-no-send`. Bodies are sanitized. Allowed commands are search, get, thread get, and labels list.
 - **Calendar** can mutate events, but calendar admin commands are disabled at the `gog` allow-list.
 - **Messages** are ingested by workers into SQLite. The MCP process mounts that database **read-only**. Search returns snippets, not full bodies or `raw_json`.
-- **Mood journal** never accepts a client timestamp. List/search/aggregates hide deleted rows and raw epoch fields; callers only see `display_recorded_at`.
+- **Mood journal** MCP tools never accept a client timestamp. List/search/aggregates hide deleted rows and raw epoch fields; callers only see `display_recorded_at`. A separate browser UI (`mood-journal-web`) is password-protected and published with Traefik. That UI can set when an entry was recorded. OpenClaw’s tools still cannot.
 - **Google Health** live-proxies the Health API with only sleep and activity read scopes. List tools return session summaries; GPS and location are stripped; sleep/exercise lists stop at 50 sessions.
 - **Context** calls the messages, calendar, and email MCP servers only. One tool returns the combined JSON. It does not read `MEMORY.md` or daily logs.
 - **Every server** returns JSON text. Payloads over 32 KiB (256 KiB for context) are replaced with a truncation stub so a tool call cannot dump an unbounded mailbox or chat history into context.
@@ -45,7 +45,7 @@ That is the “tweak the data” part: same sources OpenClaw could already reach
 ├── gog/                        # Gmail + Calendar MCP (wraps gog CLI)
 ├── google-health/              # Fitbit / Pixel Watch sleep and exercise (Health API)
 ├── messages/                   # ingest workers + read-only MCP
-├── mood-journal/               # writable journal MCP + Daylio import
+├── mood-journal/               # writable journal MCP, browser UI, Daylio import
 └── context/                    # aggregated mail/calendar/messages dump
 ```
 
@@ -70,7 +70,7 @@ Each project has its own compose file, tests, and an `openclaw.*.snippet.json` t
                  └── messages-mcp / calendar-mcp / email-mcp
 ```
 
-MCP processes listen on `0.0.0.0:3000` inside the container (`/mcp` and `GET /healthz`). They are not published on the host and have no Traefik routes. DNS-rebinding protection is on.
+MCP processes listen on `0.0.0.0:3000` inside the container (`/mcp` and `GET /healthz`). They are not published on the host and have no Traefik routes. DNS-rebinding protection is on. The mood journal browser is separate: `mood-journal-web` joins the `proxy` network and Traefik serves it over HTTPS. It does not join `mood-journal-internal`.
 
 Networks are split on purpose:
 
@@ -85,7 +85,7 @@ Containers run read-only root filesystems, drop capabilities, and cap CPU/memory
 You need Docker Compose, Node 20+, and (for the Google Messages worker tests) Go 1.25 or a `golang` image.
 
 ```bash
-cp .env.example .env          # set DATA_DIR, OPENCLAW_HOST, and deploy targets
+cp .env.example .env          # set DATA_DIR, OPENCLAW_HOST, MOOD_JOURNAL_HOST, and deploy targets
 # create the Docker networks listed in each project's compose comments
 docker compose build
 docker compose up -d
@@ -127,7 +127,7 @@ Cloud models see whatever a tool returns. Query mail, messages, the journal, hea
 
 Do not commit `openclaw.json`, `.env`, `*.sqlite`, `credentials.json`, `token.json`, or anything under `sessions/`. Those are in `.gitignore` for a reason.
 
-Set `GOG_KEYRING_PASSWORD` (and any other secrets) via the environment on the host. Do not put live tokens, cookies, or keyring passwords in compose files you intend to publish.
+Set `GOG_KEYRING_PASSWORD`, `MOOD_JOURNAL_WEB_PASSWORD`, and any other secrets via the environment on the host. Do not put live tokens, cookies, or keyring passwords in compose files you intend to publish.
 
 ## License
 

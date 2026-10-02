@@ -12,4 +12,11 @@ OpenClaw host merge (do this on the production machine, never commit live config
    Query personal journal history through a local-only agent when possible.
 
 4. Host data lives at ${DATA_DIR}/openclaw/mood-journal-data/{db,backups}.
-   The MCP process is the only writer (uid 65532).
+   The MCP process and mood-journal-web are the writers (uid 65532).
+   OpenClaw must still never mount the journal db.
+
+5. Browser UI: mood-journal-web joins the external proxy network only
+   (not mood-journal-internal) and is served by Traefik.
+   Set MOOD_JOURNAL_HOST and MOOD_JOURNAL_WEB_PASSWORD in the host .env.
+   The session cookie is Secure, so use the HTTPS host. Changing the
+   password signs everyone out. No host port is published.

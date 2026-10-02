@@ -6,6 +6,7 @@ export { logEvent } from './log.js';
 export { formatEntry, round1 } from './format.js';
 export {
   displayRecordedAt,
+  getTzParts,
   parseDateArg,
   periodKey,
   weekdayName,

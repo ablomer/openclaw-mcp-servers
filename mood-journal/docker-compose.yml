@@ -1,10 +1,12 @@
-# Mood journal MCP. Included from the repo-root OpenClaw compose.
-# No published ports. No Traefik labels.
+# Mood journal MCP plus the browser UI. Included from the repo-root compose.
+# MCP: no published ports, no Traefik labels, mood-journal-internal only.
+# Web: HTTPS via Traefik on the external proxy network. No host port.
+# It does not join mood-journal-internal, so OpenClaw cannot reach the UI.
 # Network is created by deploy.sh:
 #   docker network create --internal mood-journal-internal
 #
 # OpenClaw (root docker-compose.yml) attaches to mood-journal-internal and
-# must NEVER mount the journal db.
+# must NEVER mount the journal db. The MCP and web processes are the writers.
 
 services:
   mood-journal-mcp:
@@ -69,7 +71,53 @@ services:
         max-size: "5m"
         max-file: "3"
 
+  mood-journal-web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - ${DATA_DIR}/openclaw/mood-journal-data/db:/data
+    environment:
+      MOOD_JOURNAL_DB_PATH: /data/mood-journal.sqlite
+      MOOD_JOURNAL_WEB_PASSWORD: ${MOOD_JOURNAL_WEB_PASSWORD}
+      PORT: "3000"
+      HOST: 0.0.0.0
+      TZ: America/New_York
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mood-journal.entrypoints=http"
+      - "traefik.http.routers.mood-journal.rule=Host(`${MOOD_JOURNAL_HOST}`)"
+      - "traefik.http.middlewares.mood-journal-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.mood-journal.middlewares=mood-journal-https-redirect"
+      - "traefik.http.routers.mood-journal-secure.entrypoints=https"
+      - "traefik.http.routers.mood-journal-secure.rule=Host(`${MOOD_JOURNAL_HOST}`)"
+      - "traefik.http.routers.mood-journal-secure.tls=true"
+      - "traefik.http.routers.mood-journal-secure.service=mood-journal"
+      - "traefik.http.services.mood-journal.loadbalancer.server.port=3000"
+      - "traefik.docker.network=proxy"
+    pids_limit: 256
+    mem_limit: 256m
+    cpus: "0.50"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   mood-journal-internal:
     external: true
     name: mood-journal-internal
+  proxy:
+    external: true
